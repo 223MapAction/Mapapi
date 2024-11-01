@@ -1,4 +1,4 @@
-version: "3"
+# version: "3"
 
 services:
     postgres-db:
@@ -28,6 +28,7 @@ services:
                   daphne backend.asgi:application -p 8000 -b 0.0.0.0"
         volumes:
             - ~/uploads:/app/uploads
+            - .:/app
         expose:
             - 8000
         env_file:

@@ -116,6 +116,10 @@ urlpatterns = [
     path('hadleIncident/<int:incident_id>', HandleIncidentView.as_view(), name="handle"),
     path('user_action/', UserActionView.as_view({'get': 'list'}), name="user_action"),
     path('incidentDetail/<int:incident_id>', IncidentUserView.as_view(), name="incident_detail"),
-
+    path('registerCitizen/', RegisterView.as_view(), name='registerCitizen'),
+    path('verify-email/<uuid:token>/', VerifyEmailView.as_view(), name='verify-email'),
+    path('set-password/', SetPasswordView.as_view(), name='set-password'),
+    path('otpRequest/', RequestOTPView.as_view(), name='otp-request'),
+    path('verifyOtp/', VerifyOTPView.as_view(), name='verify-otp'),
 
 ]

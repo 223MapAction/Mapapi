@@ -62,6 +62,28 @@ class UserPutSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class RegisterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['email']
+
+    def create(self, validated_data):
+        user = User.objects.create(**validated_data)
+        user.send_verification_email()
+        return user
+
+
+class SetPasswordSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True)
+
+    def validate_password(self, value):
+        return value
+
+    def save(self, user):
+        user.set_password(self.validated_data['password'])
+        user.save()
+
+
 class CategorySerializer(ModelSerializer):
     class Meta:
         model = Category
