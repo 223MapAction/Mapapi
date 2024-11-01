@@ -6,8 +6,8 @@ from django.utils import timezone
 from importlib.resources import _
 from datetime import datetime, timedelta
 import uuid
-import random
 from django.core.mail import send_mail
+import random
 from django.conf import settings
 
 ADMIN = 'admin'
@@ -138,6 +138,21 @@ class User(AbstractBaseUser, PermissionsMixin):
         Returns the short name for the user.
         '''
         return self.first_name
+        
+    def send_verification_email(self):
+        verification_link = f"mapactionapp://verify-email/{self.verification_token}"
+        send_mail(
+            "Vérification de votre compte",
+            f"Cliquez sur le lien pour vérifier votre compte : {verification_link}",
+            "contact@map-action.com",
+            [self.email],
+            fail_silently=False,
+        )
+
+    def generate_otp(self):
+        self.otp = str(random.randint(100000, 999999))
+        self.otp_expiration = timezone.now() + timedelta(minutes=5)
+        self.save()
 
     def send_verification_email(self):
         verification_link = f"MapActionApp://verify-email/{self.verification_token}"
