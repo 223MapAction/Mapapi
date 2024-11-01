@@ -1,6 +1,6 @@
 import subprocess
 from django.db.models import Q
-from django.shortcuts import render, HttpResponse
+from django.shortcuts import render, HttpResponse, get_object_or_404
 from django.core.serializers import serialize
 from rest_framework import status, viewsets, generics
 from rest_framework.views import APIView
@@ -2315,3 +2315,77 @@ class DeclineCollaborationView(APIView):
             logger.error(f"Erreur lors de la déclinaison de la collaboration: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+@extend_schema(
+    description="Endpoint to get user who took incident into account",
+    responses={200: RegisterSerializer()},
+)
+class RegisterView(generics.CreateAPIView):
+    serializer_class = RegisterSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response({"message": "Un lien de vérification a été envoyé à votre adresse email."}, status=status.HTTP_201_CREATED)
+    
+
+class VerifyEmailView(APIView):
+    def get(self, request, token, *args, **kwargs):
+        try:
+            user = User.objects.get(verification_token=token)
+            user.is_verified = True
+            user.verification_token = None 
+            user.save()
+            return Response({"message": "Email vérifié avec succès !"}, status=status.HTTP_200_OK)
+        except User.DoesNotExist:
+            return Response({"error": "Lien de vérification invalide"}, status=status.HTTP_400_BAD_REQUEST)
+        
+
+class SetPasswordView(generics.UpdateAPIView):
+    serializer_class = SetPasswordSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+    
+
+class RequestOTPView(APIView):
+    def post(self, request):
+        phone = request.data.get("phone")
+        user, created = User.objects.get_or_create(phone=phone)
+
+        user.generate_otp()
+
+        client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+
+        message = client.messages.create(
+            body=f"Votre code de vérification est {user.otp}",
+            from_=settings.TWILIO_PHONE_NUMBER,
+            to=phone
+        )
+
+        return Response({"message": "OTP envoyé."}, status=status.HTTP_200_OK)
+    
+
+class VerifyOTPView(APIView):
+    def post(self, request):
+        phone = request.data.get("phone")
+        otp = request.data.get("otp")
+
+        try:
+            user = User.objects.get(phone=phone, otp=otp)
+            if user.is_otp_valid():
+                refresh = RefreshToken.for_user(user)
+
+                user.otp = None
+                user.save()
+
+                return Response({
+                    'refresh': str(refresh),
+                    'access': str(refresh.access_token),
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({"message": "OTP invalide ou expiré"}, status=status.HTTP_400_BAD_REQUEST)
+        except User.DoesNotExist:
+            return Response({"message": "Utilisateur non trouvé"}, status=status.HTTP_404_NOT_FOUND)
