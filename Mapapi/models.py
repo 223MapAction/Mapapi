@@ -3,11 +3,11 @@ from django.db import connection
 from django.contrib.auth.models import (
     AbstractBaseUser, BaseUserManager, PermissionsMixin, Group, Permission)
 from django.utils import timezone
-from importlib.resources import _
+from django.utils.translation import gettext_lazy as _
 from datetime import datetime, timedelta
 import uuid
-from django.core.mail import send_mail
 import random
+from .Send_mails import send_email
 from django.conf import settings
 from django.utils.html import format_html
 
@@ -140,25 +140,19 @@ class User(AbstractBaseUser, PermissionsMixin):
         '''
         return self.first_name
         
-    def send_verification_email(self):
-        verification_link = f"mapactionapp://verify-email/{self.verification_token}"
-        html_message = format_html(
-            "<p>Cliquez sur le lien pour vérifier votre compte :</p><p><a href='{0}'>Vérifier mon compte</a></p>",
-            verification_link
-        )
-        send_mail(
-            subject="Vérification de votre compte",
-            message="Cliquez sur le lien pour vérifier votre compte : " + verification_link,
-            from_email="contact@map-action.com",
-            recipient_list=[self.email],
-            fail_silently=False,
-            html_message=html_message  
-        )
-
     def generate_otp(self):
         self.otp = str(random.randint(100000, 999999))
         self.otp_expiration = timezone.now() + timedelta(minutes=5)
         self.save()
+
+    def send_verification_email(self):
+        verification_link = f"mapactionapp://verify-email/{self.verification_token}"
+        context = {"verification_link": verification_link}
+        subject = "Vérification de votre compte"
+        template_name = "emails/verification_email.html"
+        to_email = self.email
+
+        send_email.delay(subject, template_name, context, to_email)
 
     def generate_otp(self):
         self.otp = str(random.randint(100000, 999999))
