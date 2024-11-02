@@ -9,6 +9,7 @@ import uuid
 from django.core.mail import send_mail
 import random
 from django.conf import settings
+from django.utils.html import format_html
 
 ADMIN = 'admin'
 VISITOR = 'visitor'
@@ -141,12 +142,17 @@ class User(AbstractBaseUser, PermissionsMixin):
         
     def send_verification_email(self):
         verification_link = f"mapactionapp://verify-email/{self.verification_token}"
+        html_message = format_html(
+            "<p>Cliquez sur le lien pour vérifier votre compte :</p><p><a href='{0}'>Vérifier mon compte</a></p>",
+            verification_link
+        )
         send_mail(
-            "Vérification de votre compte",
-            f"Cliquez sur le lien pour vérifier votre compte : {verification_link}",
-            "contact@map-action.com",
-            [self.email],
+            subject="Vérification de votre compte",
+            message="Cliquez sur le lien pour vérifier votre compte : " + verification_link,
+            from_email="contact@map-action.com",
+            recipient_list=[self.email],
             fail_silently=False,
+            html_message=html_message  
         )
 
     def generate_otp(self):
