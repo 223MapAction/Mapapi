@@ -9,6 +9,7 @@ import uuid
 import random
 from .Send_mails import send_email
 from django.conf import settings
+from django.utils.html import format_html
 
 ADMIN = 'admin'
 VISITOR = 'visitor'
@@ -139,7 +140,6 @@ class User(AbstractBaseUser, PermissionsMixin):
         '''
         return self.first_name
         
-    
     def generate_otp(self):
         self.otp = str(random.randint(100000, 999999))
         self.otp_expiration = timezone.now() + timedelta(minutes=5)
