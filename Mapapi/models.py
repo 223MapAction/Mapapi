@@ -3,11 +3,11 @@ from django.db import connection
 from django.contrib.auth.models import (
     AbstractBaseUser, BaseUserManager, PermissionsMixin, Group, Permission)
 from django.utils import timezone
-from importlib.resources import _
+from django.utils.translation import gettext_lazy as _
 from datetime import datetime, timedelta
 import uuid
 import random
-from django.core.mail import send_mail
+from .Send_mails import send_email
 from django.conf import settings
 
 ADMIN = 'admin'
@@ -140,14 +140,13 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.first_name
 
     def send_verification_email(self):
-        verification_link = f"MapActionApp://verify-email/{self.verification_token}"
-        send_mail(
-            "Vérification de votre compte",
-            f"Cliquez sur le lien pour vérifier votre compte : {verification_link}",
-            "contact@map-action.com",
-            [self.email],
-            fail_silently=False,
-        )
+        verification_link = f"mapactionapp://verify-email/{self.verification_token}"
+        context = {"verification_link": verification_link}
+        subject = "Vérification de votre compte"
+        template_name = "emails/verification_email.html"
+        to_email = self.email
+
+        send_email.delay(subject, template_name, context, to_email)
 
     def generate_otp(self):
         self.otp = str(random.randint(100000, 999999))

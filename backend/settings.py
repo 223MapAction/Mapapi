@@ -3,9 +3,9 @@ import os
 import sys
 from pathlib import Path
 from datetime import timedelta
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 
-load_dotenv()
+# load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -40,13 +40,13 @@ INSTALLED_APPS = [
     'crispy_bootstrap4',
     'allauth',
     'allauth.account',
-    'allauth.socialaccount',
-    'allauth.socialaccount.providers.google',
-    'allauth.socialaccount.providers.facebook',
-    'allauth.socialaccount.providers.apple',
-    # 'allauth.socialaccount.providers.linkedin',
-    # 'allauth.socialaccount.providers.twitter_oauth2',
-    'drf_spectacular',
+    # 'allauth.socialaccount',
+    # 'allauth.socialaccount.providers.google',
+    # 'allauth.socialaccount.providers.facebook',
+    # 'allauth.socialaccount.providers.apple',
+    # # 'allauth.socialaccount.providers.linkedin',
+    # # 'allauth.socialaccount.providers.twitter_oauth2',
+    # 'drf_spectacular',
 
 ]
 
@@ -143,20 +143,9 @@ DATABASES = {
         'PASSWORD': os.environ.get("POSTGRES_PASSWORD", "postges"),
         'PORT': os.environ.get("PORT", "5432"),
     },
-    # 'test': {
-    #     'ENGINE': 'django.db.backends.postgresql',
-    #     'HOST': os.environ.get("DB_HOST"),
-    #     'NAME': os.environ.get("TEST_POSTGRES_DB","postgres"),
-    #     'USER': os.environ.get("POSTGRES_USER"),
-    #     'PASSWORD': os.environ.get("POSTGRES_PASSWORD"),
-    #     'PORT': os.environ.get("PORT"),
-    # },
+   
 }
 
-# print(os.environ.get("PORT"))
-
-# if 'test' in sys.argv:
-#     DATABASES['default'] = DATABASES['test']
 
 
 # Password validation
@@ -206,62 +195,6 @@ MEDIA_URL = '/uploads/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-SOCIALACCOUNT_PROVIDERS = {
-    'facebook': {
-        'METHOD': 'oauth2', # Set to 'js_sdk' to use the Facebook connect SDK
-        'SDK_URL': '//connect.facebook.net/{locale}/sdk.js',
-        'SCOPE': ['email', 'public_profile'],
-        'AUTH_PARAMS': {'auth_type': 'reauthenticate'},
-        'INIT_PARAMS': {'cookie': True},
-        'FIELDS': [
-        'id',
-        'first_name',
-        'last_name',
-        'middle_name',
-        'name',
-        'name_format',
-        'picture',
-        'short_name'
-        ],
-        'EXCHANGE_TOKEN': True,
-        'LOCALE_FUNC': 'path.to.callable',
-        'VERIFIED_EMAIL': False,
-        'VERSION': 'v13.0',
-        'GRAPH_API_URL': 'https://graph.facebook.com/v13.0',
-    }
-}
-# Enregistrement pour l'application web
-SOCIALACCOUNT_PROVIDERS = {
-    'google': {
-        'APP': {
-            'client_id': os.environ.get('web_client_id'),
-            'secret': os.environ.get('web_client_secret'),
-            'key': '',
-        }
-    }
-}
-
-# Enregistrement pour l'application Android
-SOCIALACCOUNT_PROVIDERS = {
-    'google': {
-        'APP': {
-            'client_id': os.environ.get('android_client_id'),
-            'secret': ('android_client_secret'),
-            'key': '',
-        }
-    }
-}
-
-# Enregistrement pour l'application iOS
-SOCIALACCOUNT_PROVIDERS = {
-    'google': {
-        'APP': {
-            'client_id': os.environ.get('ios_client_id'),
-            'secret': 'ios_client_secret',
-            'key': '',
-        }
-    }
-}
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ORIGIN_ALLOW_ALL = True
 CORS_ALLOW_HEADERS = [

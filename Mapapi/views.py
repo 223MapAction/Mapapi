@@ -24,13 +24,13 @@ from django.db import IntegrityError
 from backend.settings import *
 import json
 import datetime
-import requests
+# import requests
 from django.template.loader import get_template, render_to_string
 from django.utils.html import strip_tags
 from django.core.mail import EmailMultiAlternatives
 import random
 import string
-import httpx
+# import httpx
 from celery.result import AsyncResult
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.settings import api_settings
@@ -2357,11 +2357,15 @@ class RequestOTPView(APIView):
 
         user.generate_otp()
 
-        client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+        account_sid = os.environ['TWILIO_ACCOUNT_SID']
+        auth_token = os.environ['TWILIO_AUTH_TOKEN']
+        twilio_phone = os.environ['TWILIO_PHONE_NUMBER']
+
+        client = Client(account_sid, auth_token)
 
         message = client.messages.create(
             body=f"Votre code de vérification est {user.otp}",
-            from_=settings.TWILIO_PHONE_NUMBER,
+            from_=twilio_phone,
             to=phone
         )
 
