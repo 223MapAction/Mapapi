@@ -138,6 +138,12 @@ class User(AbstractBaseUser, PermissionsMixin):
         Returns the short name for the user.
         '''
         return self.first_name
+        
+    
+    def generate_otp(self):
+        self.otp = str(random.randint(100000, 999999))
+        self.otp_expiration = timezone.now() + timedelta(minutes=5)
+        self.save()
 
     def send_verification_email(self):
         verification_link = f"mapactionapp://verify-email/{self.verification_token}"
