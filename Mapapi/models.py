@@ -7,6 +7,7 @@ from django.utils.translation import gettext_lazy as _
 from datetime import datetime, timedelta
 import uuid
 import random
+# 
 from .Send_mails import send_email
 from django.conf import settings
 from django.utils.html import format_html
