@@ -12,12 +12,16 @@ jobs:
     cleanup:
         runs-on: self-hosted
         steps:
-            - name: Free up disk space
+            - name: Free up disk space and clean workspace
               run: |
                   sudo docker system prune -af
                   sudo docker volume prune -f
                   sudo apt-get clean
                   sudo df -h
+
+                  # Add permissions cleanup for Python cache
+                  sudo rm -rf /home/azureuser/actions-runner/_work/Mapapi/Mapapi/**/__pycache__
+                  sudo chmod -R 777 /home/azureuser/actions-runner/_work/Mapapi/Mapapi || true
 
     setup-and-test:
         needs: cleanup
