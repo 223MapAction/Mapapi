@@ -59,6 +59,9 @@ jobs:
                     echo "SECRET_KEY=${{ secrets.SECRET_KEY }}"
                     echo "WEB_CLIENT_ID=${{ secrets.WEB_CLIENT_ID }}"
                     echo "WEB_CLIENT_SECRET=${{ secrets.WEB_CLIENT_SECRET }}"
+                    echo "TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}"
+                    echo "TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}"
+                    echo "TWILIO_PHONE_NUMBER=${{ secrets.TWILIO_PHONE_NUMBER }}"
                   } > .env
 
             - name: Run Tests
@@ -196,6 +199,9 @@ jobs:
                   TEST_POSTGRES_DB: ${{ secrets.TEST_POSTGRES_DB }}
                   WEB_CLIENT_ID: ${{ secrets.WEB_CLIENT_ID }}
                   WEB_CLIENT_SECRET: ${{ secrets.WEB_CLIENT_SECRET }}
+                  TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+                  TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+                  TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER }}
               run: |
                   # Conditionally remove existing network if it exists
                   docker network ls | grep -q mapapi_micro-services-network && docker network rm mapapi_micro-services-network || true
