@@ -172,6 +172,9 @@ jobs:
                     echo "SECRET_KEY=${{ secrets.SECRET_KEY }}"
                     echo "WEB_CLIENT_ID=${{ secrets.WEB_CLIENT_ID }}"
                     echo "WEB_CLIENT_SECRET=${{ secrets.WEB_CLIENT_SECRET }}"
+                    echo "TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}"
+                    echo "TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}"
+                    echo "TWILIO_PHONE_NUMBER=${{ secrets.TWILIO_PHONE_NUMBER }}"
                   } > .env
 
             - name: Build and Run Docker Compose
