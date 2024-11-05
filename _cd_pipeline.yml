@@ -51,6 +51,9 @@ services:
             - TEST_POSTGRES_DB=${TEST_POSTGRES_DB}
             - WEB_CLIENT_ID=${WEB_CLIENT_ID}
             - WEB_CLIENT_SECRET=${WEB_CLIENT_SECRET}
+            - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
+            - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
+            - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
         depends_on:
             - postgres-db
             - redis
