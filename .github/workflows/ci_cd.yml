@@ -126,6 +126,22 @@ jobs:
         runs-on: self-hosted
         permissions: write-all
         steps:
+            - name: Pre-checkout cleanup
+              run: |
+                  # Stop any Python processes
+                  sudo pkill -f python || true
+
+                  # Remove problematic __pycache__ directories
+                  sudo find /home/azureuser/actions-runner/_work/Mapapi/Mapapi -type d -name "__pycache__" -exec rm -rf {} + || true
+
+                  # Force remove the entire directory if needed
+                  sudo rm -rf /home/azureuser/actions-runner/_work/Mapapi/Mapapi || true
+
+                  # Recreate directory with proper permissions
+                  sudo mkdir -p /home/azureuser/actions-runner/_work/Mapapi/Mapapi
+                  sudo chown -R $USER:$USER /home/azureuser/actions-runner/_work/Mapapi/Mapapi
+                  sudo chmod -R 777 /home/azureuser/actions-runner/_work/Mapapi/Mapapi
+
             - name: Checkout Repository
               uses: actions/checkout@v3
 
