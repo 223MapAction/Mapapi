@@ -155,10 +155,20 @@ class User(AbstractBaseUser, PermissionsMixin):
 
         send_email.delay(subject, template_name, context, to_email)
 
-    def generate_otp(self):
-        self.otp = str(random.randint(100000, 999999))
-        self.otp_expiration = timezone.now() + timedelta(minutes=5)
-        self.save()
+    # def generate_otp(self):
+    #     self.otp = str(random.randint(100000, 999999))
+    #     self.otp_expiration = timezone.now() + timedelta(minutes=5)
+    #     self.save()
+
+    def is_otp_valid(self):
+        if not self.otp or not self.otp_expiration:
+            return False
+        
+        otp_expiry_time = timedelta(minutes=5)  
+        if timezone.now() - self.otp_expiration > otp_expiry_time:
+            return False
+        
+        return True
 
 class Incident(models.Model):
     title = models.CharField(max_length=250, blank=True,
