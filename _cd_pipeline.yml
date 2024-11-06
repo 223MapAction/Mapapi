@@ -81,9 +81,12 @@ services:
         build:
             context: ./services/nginx/
         ports:
-            - 80:80
+            - "443:443"
+            - "80:80"
         volumes:
             - ./services/nginx/conf.d/:/etc/nginx/conf.d/
+            - /etc/letsencrypt:/etc/letsencrypt
+            - /etc/ssl/certs:/etc/ssl/certs
         depends_on:
             - api-server
         networks:
