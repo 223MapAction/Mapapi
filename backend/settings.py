@@ -23,7 +23,6 @@ DEBUG = True
 ALLOWED_HOSTS = ast.literal_eval(os.environ.get("ALLOWED_HOSTS"))
 
 
-# hosts = ['localhost', '127.0.0.1', '192.168.0.2', '192.168.1.26','0.0.0.0', '192.168.0.5','51.159.141.113', '35.214.242.88', '139.144.63.238', '192.168.0.3', '20.19.82.202']
 
 
 # Application definition
@@ -43,6 +42,8 @@ INSTALLED_APPS = [
     'crispy_bootstrap4',
     'allauth',
     'allauth.account',
+    'drf_spectacular',
+    'drf_spectacular_sidecar',
     # 'allauth.socialaccount',
     # 'allauth.socialaccount.providers.google',
     # 'allauth.socialaccount.providers.facebook',
@@ -96,6 +97,9 @@ SPECTACULAR_SETTINGS = {
      'Within these pages, developers will find detailed information, including endpoint descriptions, parameter specifications, response formats, authentication requirements, and usage examples.',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
+    'SWAGGER_UI_DIST': 'SIDECAR',  # shorthand to use the sidecar instead
+    'SWAGGER_UI_FAVICON_HREF': 'SIDECAR',
+    'REDOC_DIST': 'SIDECAR',
 }
 
 MIDDLEWARE = [
