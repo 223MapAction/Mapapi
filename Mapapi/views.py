@@ -227,7 +227,7 @@ class UserAPIListView(generics.CreateAPIView):
 
             user_type = request.data.get('user_type', None)
             if user_type:
-                subject_prefix = '[MAP ACTION] - Votre compte'
+                subject_prefix = '[MAP ACTION] - Création de Compte'
                 email_template = 'mail_add_account.html'
                 usertype = user_type.upper()
 
@@ -235,7 +235,7 @@ class UserAPIListView(generics.CreateAPIView):
                     subject = f'{subject_prefix} Admin'
                     email_template = 'mail_add_admin.html'
                 else:
-                    subject = f'{subject_prefix} {usertype}'
+                    subject = f'{subject_prefix} Organisation'
 
                 context = {'email': request.data["email"], 'password': request.data["password"], 'usertype': usertype}
 
