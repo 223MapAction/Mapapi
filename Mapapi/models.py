@@ -67,6 +67,19 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
+
+    def get_or_create_user(self, email=None, phone=None, password=None, **extra_fields):
+        """
+        Get an existing user by phone or create a new one with a dummy email if needed.
+        """
+        if not email and not phone:
+            raise ValueError('un email ou un numéro de téléphone est requiert')
+        
+        user = self.filter(phone=phone).first()
+        if user is None:
+            user = self._create_user(email=email, phone=phone, password=password, **extra_fields)
+        return user
+
     def create_user(self, email, password=None, **extra_fields):
         extra_fields.setdefault('is_superuser', False)
         return self._create_user(email, password, **extra_fields)
