@@ -2353,7 +2353,7 @@ class SetPasswordView(generics.UpdateAPIView):
 class RequestOTPView(APIView):
     def post(self, request):
         phone = request.data.get("phone")
-        user, created = User.objects.get_or_create(phone=phone)
+        user = User.objects.get_or_create_user(phone=phone)
 
         user.generate_otp()
 
