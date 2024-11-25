@@ -3,8 +3,6 @@ djangorestframework == 3.14.0
 djangorestframework-simplejwt == 5.3.0
 django-cors-headers == 4.3.0
 django-crispy-forms == 2.1
-# pyscopg2 == 66.0.2
-pyscopg2
 crispy-bootstrap4 == 2023.1
 importlib-resources==5.12
 Pillow==10.1.0
