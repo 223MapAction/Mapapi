@@ -165,7 +165,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.save()
 
     def send_verification_email(self):
-        verification_link = f"mapactionapp://verify-email/{self.verification_token}"
+        verification_link = f"com.uwaish.MapActionApp://verify-email/{self.verification_token}"
         context = {"verification_link": verification_link}
         subject = "Vérification de votre compte"
         template_name = "emails/verification_email.html"
