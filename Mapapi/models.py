@@ -50,14 +50,18 @@ ETAT_RAPPORT = (
 class UserManager(BaseUserManager):
     use_in_migrations = True
 
-    def _create_user(self, email, password, **extra_fields):
+    def _create_user(self, email=None, phone=None, password=None, **extra_fields):
         """
         Creates and saves a User with the given email and password.
         """
+        if not email and not phone:
+            raise ValueError('The given email or phone number must be set')
+        # Générer un email fictif si non fourni
         if not email:
-            raise ValueError('The given email must be set')
+            email = f"{phone}@example.com"
+        
         email = self.normalize_email(email)
-        user = self.model(email=email, **extra_fields)
+        user = self.model(email=email, phone=phone, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
