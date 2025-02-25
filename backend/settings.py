@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from datetime import timedelta
 # from dotenv import load_dotenv
+import ast
+
 
 # load_dotenv()
 
@@ -18,7 +20,8 @@ SECRET_KEY = 'django-insecure-4k+g*9g=6h&_8@s05ps!f)n!ivs4=yujv+rx(obnku=eyz3&jb
 DEBUG = True
 
 
-ALLOWED_HOSTS = [os.environ.get("ALLOWED_HOSTS"),'localhost', '127.0.0.1', '192.168.0.2', '192.168.1.26','0.0.0.0', '192.168.0.5','51.159.141.113', '35.214.242.88', '139.144.63.238', '192.168.0.3', '20.19.82.202']
+ALLOWED_HOSTS = [os.environ.get("ALLOWED_HOSTS", "localhost")]
+
 
 
 
@@ -40,6 +43,8 @@ INSTALLED_APPS = [
     'crispy_bootstrap4',
     'allauth',
     'allauth.account',
+    'drf_spectacular',
+    'drf_spectacular_sidecar',
     # 'allauth.socialaccount',
     # 'allauth.socialaccount.providers.google',
     # 'allauth.socialaccount.providers.facebook',
@@ -93,6 +98,9 @@ SPECTACULAR_SETTINGS = {
      'Within these pages, developers will find detailed information, including endpoint descriptions, parameter specifications, response formats, authentication requirements, and usage examples.',
     'VERSION': '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
+    'SWAGGER_UI_DIST': 'SIDECAR',  # shorthand to use the sidecar instead
+    'SWAGGER_UI_FAVICON_HREF': 'SIDECAR',
+    'REDOC_DIST': 'SIDECAR',
 }
 
 MIDDLEWARE = [
@@ -181,7 +189,6 @@ USE_TZ = True
 
 
 # Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/4.1/howto/static-files/
 
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, "static")
@@ -191,7 +198,6 @@ MEDIA_URL = '/uploads/'
 
 
 # Default primary key field type
-# https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

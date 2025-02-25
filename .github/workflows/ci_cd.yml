@@ -12,12 +12,16 @@ jobs:
     cleanup:
         runs-on: self-hosted
         steps:
-            - name: Free up disk space
+            - name: Free up disk space and clean workspace
               run: |
                   sudo docker system prune -af
                   sudo docker volume prune -f
                   sudo apt-get clean
                   sudo df -h
+
+                  # Add permissions cleanup for Python cache
+                  sudo rm -rf /home/azureuser/actions-runner/_work/Mapapi/Mapapi/**/__pycache__
+                  sudo chmod -R 777 /home/azureuser/actions-runner/_work/Mapapi/Mapapi || true
 
     setup-and-test:
         needs: cleanup
@@ -55,6 +59,9 @@ jobs:
                     echo "SECRET_KEY=${{ secrets.SECRET_KEY }}"
                     echo "WEB_CLIENT_ID=${{ secrets.WEB_CLIENT_ID }}"
                     echo "WEB_CLIENT_SECRET=${{ secrets.WEB_CLIENT_SECRET }}"
+                    echo "TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}"
+                    echo "TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}"
+                    echo "TWILIO_PHONE_NUMBER=${{ secrets.TWILIO_PHONE_NUMBER }}"
                   } > .env
 
             - name: Run Tests
@@ -76,6 +83,9 @@ jobs:
                   TEST_POSTGRES_DB: ${{ secrets.TEST_POSTGRES_DB }}
                   WEB_CLIENT_ID: ${{ secrets.WEB_CLIENT_ID }}
                   WEB_CLIENT_SECRET: ${{ secrets.WEB_CLIENT_SECRET }}
+                  TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+                  TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+                  TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER }}
               run: |
                   mkdir -p coverage
                   chmod 777 coverage
@@ -116,6 +126,22 @@ jobs:
         runs-on: self-hosted
         permissions: write-all
         steps:
+            - name: Pre-checkout cleanup
+              run: |
+                  # Stop any Python processes
+                  sudo pkill -f python || true
+
+                  # Remove problematic __pycache__ directories
+                  sudo find /home/azureuser/actions-runner/_work/Mapapi/Mapapi -type d -name "__pycache__" -exec rm -rf {} + || true
+
+                  # Force remove the entire directory if needed
+                  sudo rm -rf /home/azureuser/actions-runner/_work/Mapapi/Mapapi || true
+
+                  # Recreate directory with proper permissions
+                  sudo mkdir -p /home/azureuser/actions-runner/_work/Mapapi/Mapapi
+                  sudo chown -R $USER:$USER /home/azureuser/actions-runner/_work/Mapapi/Mapapi
+                  sudo chmod -R 777 /home/azureuser/actions-runner/_work/Mapapi/Mapapi
+
             - name: Checkout Repository
               uses: actions/checkout@v3
 
@@ -165,6 +191,9 @@ jobs:
                     echo "SECRET_KEY=${{ secrets.SECRET_KEY }}"
                     echo "WEB_CLIENT_ID=${{ secrets.WEB_CLIENT_ID }}"
                     echo "WEB_CLIENT_SECRET=${{ secrets.WEB_CLIENT_SECRET }}"
+                    echo "TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}"
+                    echo "TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}"
+                    echo "TWILIO_PHONE_NUMBER=${{ secrets.TWILIO_PHONE_NUMBER }}"
                   } > .env
 
             - name: Build and Run Docker Compose
@@ -186,6 +215,9 @@ jobs:
                   TEST_POSTGRES_DB: ${{ secrets.TEST_POSTGRES_DB }}
                   WEB_CLIENT_ID: ${{ secrets.WEB_CLIENT_ID }}
                   WEB_CLIENT_SECRET: ${{ secrets.WEB_CLIENT_SECRET }}
+                  TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+                  TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+                  TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER }}
               run: |
                   # Conditionally remove existing network if it exists
                   docker network ls | grep -q mapapi_micro-services-network && docker network rm mapapi_micro-services-network || true

@@ -227,7 +227,7 @@ class UserAPIListView(generics.CreateAPIView):
 
             user_type = request.data.get('user_type', None)
             if user_type:
-                subject_prefix = '[MAP ACTION] - Votre compte'
+                subject_prefix = '[MAP ACTION] - Création de Compte'
                 email_template = 'mail_add_account.html'
                 usertype = user_type.upper()
 
@@ -235,7 +235,7 @@ class UserAPIListView(generics.CreateAPIView):
                     subject = f'{subject_prefix} Admin'
                     email_template = 'mail_add_admin.html'
                 else:
-                    subject = f'{subject_prefix} {usertype}'
+                    subject = f'{subject_prefix} Organisation'
 
                 context = {'email': request.data["email"], 'password': request.data["password"], 'usertype': usertype}
 
@@ -2353,7 +2353,7 @@ class SetPasswordView(generics.UpdateAPIView):
 class RequestOTPView(APIView):
     def post(self, request):
         phone = request.data.get("phone")
-        user, created = User.objects.get_or_create(phone=phone)
+        user = User.objects.get_or_create_user(phone=phone)
 
         user.generate_otp()
 
@@ -2388,6 +2388,15 @@ class VerifyOTPView(APIView):
                 return Response({
                     'refresh': str(refresh),
                     'access': str(refresh.access_token),
+                    'user': {
+                        'id' : user.id,
+                        'email': user.email,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name,
+                        'phone': user.phone,
+                        'is_verified': user.is_verified,
+                        'user_type': user.user_type,
+                    }
                 }, status=status.HTTP_200_OK)
             else:
                 return Response({"message": "OTP invalide ou expiré"}, status=status.HTTP_400_BAD_REQUEST)

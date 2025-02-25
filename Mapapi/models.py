@@ -56,6 +56,7 @@ class UserManager(BaseUserManager):
         """
         if not email and not phone:
             raise ValueError('The given email or phone number must be set')
+        
         # Générer un email fictif si non fourni
         if not email:
             email = f"{phone}@example.com"
@@ -64,6 +65,19 @@ class UserManager(BaseUserManager):
         user = self.model(email=email, phone=phone, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
+        return user
+
+
+    def get_or_create_user(self, email=None, phone=None, password=None, **extra_fields):
+        """
+        Get an existing user by phone or create a new one with a dummy email if needed.
+        """
+        if not email and not phone:
+            raise ValueError('un email ou un numéro de téléphone est requiert')
+        
+        user = self.filter(phone=phone).first()
+        if user is None:
+            user = self._create_user(email=email, phone=phone, password=password, **extra_fields)
         return user
 
     def create_user(self, email, password=None, **extra_fields):
@@ -151,7 +165,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.save()
 
     def send_verification_email(self):
-        verification_link = f"mapactionapp://verify-email/{self.verification_token}"
+        verification_link = f"com.uwaish.MapActionApp://verify-email/{self.verification_token}"
         context = {"verification_link": verification_link}
         subject = "Vérification de votre compte"
         template_name = "emails/verification_email.html"
@@ -159,10 +173,20 @@ class User(AbstractBaseUser, PermissionsMixin):
 
         send_email.delay(subject, template_name, context, to_email)
 
-    def generate_otp(self):
-        self.otp = str(random.randint(100000, 999999))
-        self.otp_expiration = timezone.now() + timedelta(minutes=5)
-        self.save()
+    # def generate_otp(self):
+    #     self.otp = str(random.randint(100000, 999999))
+    #     self.otp_expiration = timezone.now() + timedelta(minutes=5)
+    #     self.save()
+
+    def is_otp_valid(self):
+        if not self.otp or not self.otp_expiration:
+            return False
+        
+        otp_expiry_time = timedelta(minutes=5)  
+        if timezone.now() - self.otp_expiration > otp_expiry_time:
+            return False
+        
+        return True
 
 class Incident(models.Model):
     title = models.CharField(max_length=250, blank=True,
