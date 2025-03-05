@@ -275,3 +275,13 @@ class UserActionSerializer(serializers.ModelSerializer):
         model = UserAction
         fields = '__all__' 
 
+
+class DiscussionMessageSerializer(serializers.ModelSerializer):
+    sender = UserSerializer(read_only=True)
+    recipient = UserSerializer(read_only=True)
+    class Meta:
+        model = DiscussionMessage
+        fields = ['id', 'incident', 'collaboration', 'sender', 'message', 'created_at','recipient']
+        read_only_fields = ('sender', 'incident', 'collaboration','recipient')
+
+
