@@ -1967,9 +1967,15 @@ def send_sms(phone_number, otp_code):
     
 
 class CollaborationView(generics.CreateAPIView, generics.ListAPIView):
-    permission_classes = ()
+    permission_classes = [IsAuthenticated]
     queryset = Collaboration.objects.all()
     serializer_class = CollaborationSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        return Collaboration.objects.filter(
+            Q(user=user) | Q(incident__taken_by=user) 
+        )
 
     def post(self, request, *args, **kwargs):
         try:
@@ -2402,3 +2408,49 @@ class VerifyOTPView(APIView):
                 return Response({"message": "OTP invalide ou expiré"}, status=status.HTTP_400_BAD_REQUEST)
         except User.DoesNotExist:
             return Response({"message": "Utilisateur non trouvé"}, status=status.HTTP_404_NOT_FOUND)
+
+
+class DiscussionMessageView(generics.ListCreateAPIView):
+    serializer_class = DiscussionMessageSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        incident_id = self.kwargs.get('incident_id')
+        user = self.request.user
+        try:
+            collaboration = Collaboration.objects.get(
+                Q(user=user) | Q(incident__taken_by=user),
+                incident__id=incident_id, 
+                status='accepted'
+            )
+        except Collaboration.DoesNotExist:
+            raise NotFound("Aucune discussion trouvée pour cet incident.")
+        
+        if collaboration.incident.etat == "resolved":
+            raise NotFound("La discussion est terminée car l'incident est résolu.")
+
+        return DiscussionMessage.objects.filter(
+            incident__id=incident_id
+        ).filter(
+            Q(sender=user) | Q(recipient=user)
+        )
+    
+    def perform_create(self, serializer):
+        incident_id = self.kwargs.get('incident_id')
+        try:
+            collaboration = Collaboration.objects.get(incident__id=incident_id, user=self.request.user, status='accepted')
+            recipient = collaboration.incident.taken_by  
+        except Collaboration.DoesNotExist:
+            collaboration = Collaboration.objects.get(incident__id=incident_id, status='accepted')
+            recipient = collaboration.user
+
+        if collaboration.incident.etat == "resolved":  
+            raise ValidationError("Cet incident est résolu, la discussion est terminée.")
+
+        serializer.save(
+            sender=self.request.user,
+            incident=collaboration.incident,
+            collaboration=collaboration,
+            recipient=recipient
+        )
+
