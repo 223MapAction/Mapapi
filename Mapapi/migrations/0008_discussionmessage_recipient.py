@@ -8,7 +8,7 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('Mapapi', '0007_auto_20250303_0923'),
+        ('Mapapi', '0006_discussionmessage'),
     ]
 
     operations = [
