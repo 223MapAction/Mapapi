@@ -2426,8 +2426,6 @@ class DiscussionMessageView(generics.ListCreateAPIView):
         except Collaboration.DoesNotExist:
             raise NotFound("Aucune discussion trouvée pour cet incident.")
         
-        if collaboration.incident.etat == "resolved":
-            raise NotFound("La discussion est terminée car l'incident est résolu.")
 
         return DiscussionMessage.objects.filter(
             incident__id=incident_id
