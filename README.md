@@ -6,7 +6,7 @@
     <h1 align="center">Mapapi</h1>
 </p>
 <p align="center">
-    <em>Comprehensive solution for managing and visualizing environment-related incidents.</em>
+    <em>Comprehensive solution for managing and visualizing environment-related incidents .</em>
 </p>
 <p align="center">
 	<img src="https://img.shields.io/github/license/223MapAction/Model_deploy?style=flat-square&amp;logo=opensourceinitiative&amp;logoColor=white&amp;color=0080ff" alt="License">
