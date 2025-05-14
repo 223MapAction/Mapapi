@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from .serializer import *
 from django.middleware.csrf import get_token
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from rest_framework.pagination import PageNumberPagination
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -22,6 +22,7 @@ from django.contrib.auth.views import PasswordChangeView
 from django.conf import settings
 from django.db import IntegrityError
 from backend.settings import *
+from django.views import View
 import json
 import datetime
 # import requests
@@ -44,6 +45,13 @@ import time
 import logging
 from django.utils import timezone
 from datetime import timedelta
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+import random
+import string
+
+def get_random(length=6):
+    return ''.join(random.choices(string.digits, k=length))
 
 logger = logging.getLogger(__name__)
 
@@ -370,10 +378,10 @@ class IncidentAPIListView(generics.CreateAPIView):
             longitude = serializer.data.get("longitude")
             latitude = serializer.data.get("lattitude")
             print("Longitude:", longitude)
-            incident_instance = Incident.objects.get(longitude=longitude)
-            incident_id = incident_instance.id
+            # incident_instance = Incident.objects.get(longitude=longitude)
+            # incident_id = incident_instance.id
 
-            print(incident_id)
+            # print(incident_id)
             
 
           
@@ -1589,7 +1597,7 @@ class IndicateurOnIncidentByEluAPIView(generics.CreateAPIView):
             "data": listData
         }, status=status.HTTP_200_OK)
 
-
+@method_decorator(csrf_exempt, name='dispatch')
 class PasswordResetView(generics.CreateAPIView):
     """ use postman to test give 4 fields new_password  new_password_confirm email code post methode"""
     permission_classes = (
@@ -1597,9 +1605,8 @@ class PasswordResetView(generics.CreateAPIView):
     )
     queryset = User.objects.all()
     serializer_class = ResetPasswordSerializer
-
     def post(self, request, *args, **kwargs):
-
+        print("✅ post() de PasswordResetView appelée")
         if 'code' not in request.data or request.data['code'] is None:
             return Response({
                 "status": "failure",
@@ -1685,7 +1692,9 @@ class PasswordResetRequestView(generics.CreateAPIView):
                 user=user_,
                 code=code_
             )
-            subject, from_email, to = '[MAP ACTION] - Votre code de reinitialisation', settings.EMAIL_HOST_USER, user_.email
+            subject = '[MAP ACTION] - Votre code de réinitialisation'
+            from_email = 'Map Action <{}>'.format(settings.EMAIL_HOST_USER)  
+            to = user_.email
             html_content = render_to_string('mail_pwd.html', {'code': code_})  # render with dynamic value#
             text_content = strip_tags(html_content)  # Strip the html tag. So people can see the pure text at least.
             msg = EmailMultiAlternatives(subject, text_content, from_email, [to])
@@ -2452,3 +2461,25 @@ class DiscussionMessageView(generics.ListCreateAPIView):
             recipient=recipient
         )
 
+class RedirectToAppView(View):
+    def get(self, request, token):
+        deep_link_url = f"com.uwaish.MapActionApp://verify-email/{token}"
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Redirection...</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <script type="text/javascript">
+                window.location = "{deep_link_url}";
+                setTimeout(function() {{
+                    window.location = "https://map-action.com/"; // fallback si l'app n'est pas installée
+                }}, 3000);
+            </script>
+        </head>
+        <body>
+            <p>Redirection vers l'application en cours...</p>
+        </body>
+        </html>
+        """
+        return HttpResponse(html)

@@ -22,23 +22,53 @@ class UserSerializer(ModelSerializer):
         return user
 
 
-class UserRegisterSerializer(serializers.ModelSerializer):
+# class UserRegisterSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = User
+#         fields = '__all__'
+#         depth = 1
+
+#     def create(self, validated_data):
+#         user = User(
+#             email=validated_data['email'],
+#             first_name=validated_data['first_name'],
+#             last_name=validated_data['last_name'],
+#             phone=validated_data['phone'],
+#             is_active=True,
+#             address=validated_data['address']
+#         )
+#         user.set_password(validated_data['password'])
+#         user.save()
+#         return user
+
+ 
+class UserSerializer(ModelSerializer):
+    incident_preferences = serializers.ListField(
+        child=serializers.CharField(),
+        write_only=True,
+        required=False
+    )
+
     class Meta:
         model = User
-        fields = '__all__'
-        depth = 1
+        exclude = ('user_permissions', 'is_superuser', 'is_active', 'is_staff')
 
     def create(self, validated_data):
-        user = User(
-            email=validated_data['email'],
-            first_name=validated_data['first_name'],
-            last_name=validated_data['last_name'],
-            phone=validated_data['phone'],
-            is_active=True,
-            address=validated_data['address']
-        )
+        zones = validated_data.pop('zones', None)
+        incident_preferences = validated_data.pop('incident_preferences', [])
+
+        user = self.Meta.model(**validated_data)
         user.set_password(validated_data['password'])
         user.save()
+
+        if zones:
+            user.zones.set(zones)
+
+
+        if user.user_type == "elu" and incident_preferences:
+            for incident_type in incident_preferences:
+                OrganisationTag.objects.create(user=user, incident_type=incident_type)
+
         return user
 
 
