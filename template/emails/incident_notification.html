@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Nouveau Rapport d'Incident</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background-color: #f4f4f4;
+      padding: 20px;
+      color: #333;
+    }
+
+    .container {
+      background-color: #ffffff;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    h2 {
+      color: #1976D2;
+    }
+
+    .btn {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 12px 20px;
+      background-color: #1976D2;
+      color: #ffffff;
+      text-decoration: none;
+      border-radius: 5px;
+    }
+
+    .footer {
+      margin-top: 30px;
+      font-size: 12px;
+      text-align: center;
+      color: #999;
+    }
+
+    .highlight {
+      font-weight: bold;
+      color: #444;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>🔔 Nouveau rapport d'incident signalé</h2>
+
+    <p>Bonjour, {{ organisation }}</p>
+
+    <p>Un nouvel incident de type <span class="highlight">{{ incident_type }}</span> a été reporté sur la plateforme <strong>MAP ACTION</strong>.</p>
+
+    <p>👉 Nous vous recommandons de consulter la plateforme pour voir plus de détails et prendre les mesures nécessaires.</p>
+
+    <a href="https://app.map-action.com/auth/signin" class="btn">Consulter l'incident</a>
+
+    <div class="footer">
+      Cet email vous a été envoyé automatiquement par la plateforme MAP ACTION.<br>
+      Merci de ne pas répondre directement à ce message.
+    </div>
+  </div>
+</body>
+</html>
