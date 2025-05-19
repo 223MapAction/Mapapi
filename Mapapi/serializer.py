@@ -6,40 +6,40 @@ from rest_framework.serializers import ModelSerializer
 from django.contrib.auth.hashers import make_password
 
 
-class UserSerializer(ModelSerializer):
-    class Meta:
-        model = User
-        exclude = (
-            'user_permissions', 'is_superuser', 'is_active', 'is_staff')
-
-    def create(self, validated_data):
-        zones = validated_data.pop('zones', None)
-        user = self.Meta.model(**validated_data)
-        user.set_password(validated_data['password'])
-        user.save()
-        if zones:
-            user.zones.set(zones)
-        return user
-
-
-# class UserRegisterSerializer(serializers.ModelSerializer):
+# class UserSerializer(ModelSerializer):
 #     class Meta:
 #         model = User
-#         fields = '__all__'
-#         depth = 1
+#         exclude = (
+#             'user_permissions', 'is_superuser', 'is_active', 'is_staff')
 
 #     def create(self, validated_data):
-#         user = User(
-#             email=validated_data['email'],
-#             first_name=validated_data['first_name'],
-#             last_name=validated_data['last_name'],
-#             phone=validated_data['phone'],
-#             is_active=True,
-#             address=validated_data['address']
-#         )
+#         zones = validated_data.pop('zones', None)
+#         user = self.Meta.model(**validated_data)
 #         user.set_password(validated_data['password'])
 #         user.save()
+#         if zones:
+#             user.zones.set(zones)
 #         return user
+
+
+class UserRegisterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = '__all__'
+        depth = 1
+
+    def create(self, validated_data):
+        user = User(
+            email=validated_data['email'],
+            first_name=validated_data['first_name'],
+            last_name=validated_data['last_name'],
+            phone=validated_data['phone'],
+            is_active=True,
+            address=validated_data['address']
+        )
+        user.set_password(validated_data['password'])
+        user.save()
+        return user
 
  
 class UserSerializer(ModelSerializer):
