@@ -32,6 +32,7 @@ services:
         tty: true
         command: tail -f /dev/null # Keep container running
         volumes:
+            - .:/app   # Mount the entire project directory to watch file changes
             - ~/uploads_test:/app/uploads
         expose:
             - 8000
