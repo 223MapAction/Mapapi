@@ -482,7 +482,7 @@ class PasswordResetViewTests(APITestCase):
         # Create a used password reset code
         password_reset_obj = PasswordReset.objects.create(
             user=self.user,
-            code="USEDCODE",
+            code="USED123",
             used=True,
             date_used=timezone.now()
         )
