@@ -142,18 +142,18 @@ class UserViewCoverageTests(APITestCase):
     
     def test_password_reset_request(self):
         """Test requesting a password reset"""
-        url = reverse('passwordReset')
+        # Use passwordRequest for initiating the password reset
+        url = reverse('passwordRequest')
         data = {
             'email': self.user.email
         }
         response = self.client.post(url, data, format='json')
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # API may return either a TemplateResponse or Response - both are valid for HTTP 200
-        self.assertTrue(isinstance(response, TemplateResponse) or isinstance(response, Response))
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        # Check the response is a Response object
+        self.assertTrue(isinstance(response, Response))
         
-        # The password reset flow may have changed - it might be using Django's built-in
-        # password reset flow rather than creating a PasswordReset object
-        # Skip this assertion
+        # Verify a PasswordReset object was created
+        self.assertTrue(PasswordReset.objects.filter(user=self.user).exists())
     
     def test_check_password_reset_code(self):
         """Test checking a password reset code"""
@@ -173,6 +173,16 @@ class UserViewCoverageTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('status', response.data)
         self.assertEqual(response.data['status'], 'success')
+
+    def test_retrieve_user_details_unauthenticated(self):
+        """Test retrieving user details without authentication."""
+        self.client.logout()
+        url = reverse('user', kwargs={'id': self.user.id})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_delete_user_unauthenticated(self):
+        pass
 
 class MessageViewCoverageTests(APITestCase):
     """Tests for increasing coverage of message-related views"""

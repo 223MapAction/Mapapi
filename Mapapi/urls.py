@@ -3,7 +3,7 @@ from .views import *
 from django.contrib.auth.views import (
     LoginView, LogoutView,
     PasswordChangeView, PasswordChangeDoneView,
-    PasswordResetView,PasswordResetDoneView, PasswordResetConfirmView,PasswordResetCompleteView,
+    PasswordResetView as DjangoPasswordResetView,PasswordResetDoneView, PasswordResetConfirmView,PasswordResetCompleteView,
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -11,7 +11,7 @@ from rest_framework_simplejwt.views import (
     TokenVerifyView,
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
-
+from .views import PasswordResetView
 
 urlpatterns = [
     # URL PATTERNS for the documentation

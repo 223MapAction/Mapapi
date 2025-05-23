@@ -24,6 +24,7 @@ from django.db import IntegrityError
 from backend.settings import *
 import json
 import datetime
+from datetime import timedelta
 # import requests
 from django.template.loader import get_template, render_to_string
 from django.utils.html import strip_tags
@@ -49,6 +50,10 @@ from django.utils.dateparse import parse_date
 logger = logging.getLogger(__name__)
 
 N = 7
+
+def get_random():
+    """Generate a random 7-character code for password reset"""
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
 
 class CustomPageNumberPagination(PageNumberPagination):
     page_size = 100
@@ -1642,6 +1647,16 @@ class PasswordResetView(generics.CreateAPIView):
                     "status": "failure",
                     "message": "not such item",
                     "error": "not such item"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Check if the reset code has expired
+            timeout_hours = getattr(settings, 'PASSWORD_RESET_TIMEOUT_HOURS', 1)
+            expiry_time = passReset.date_created + timedelta(hours=timeout_hours)
+            if timezone.now() > expiry_time:
+                return Response({
+                    "status": "failure",
+                    "message": "reset code has expired",
+                    "error": "expired code"
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             user_.set_password(request.data['new_password'])
