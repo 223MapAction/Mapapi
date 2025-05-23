@@ -362,6 +362,14 @@ class PasswordResetViewTests(APITestCase):
         response = self.client.post(url, data, format='json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         # No email should be sent for non-existent email 
+        
+    def test_initiate_password_reset_missing_email(self):
+        """Test initiating password reset without providing an email"""
+        url = reverse('passwordRequest')
+        data = {}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
 
     def test_confirm_password_reset_successful(self):
         """Test successfully confirming a password reset with a valid code"""
@@ -400,6 +408,43 @@ class PasswordResetViewTests(APITestCase):
         response = self.client.post(confirm_url, confirm_data, format='json') 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST) 
         self.assertIn('error', response.data)
+        
+    def test_confirm_password_reset_missing_code(self):
+        """Test confirming password reset without providing a code"""
+        confirm_url = reverse('passwordReset')
+        confirm_data = {
+            'email': self.user.email,
+            'new_password': 'somenewpassword',
+            'new_password_confirm': 'somenewpassword'
+        }
+        response = self.client.post(confirm_url, confirm_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+        
+    def test_confirm_password_reset_missing_email(self):
+        """Test confirming password reset without providing an email"""
+        confirm_url = reverse('passwordReset')
+        confirm_data = {
+            'code': 'SOMECODE',
+            'new_password': 'somenewpassword',
+            'new_password_confirm': 'somenewpassword'
+        }
+        response = self.client.post(confirm_url, confirm_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+        
+    def test_confirm_password_reset_mismatched_passwords(self):
+        """Test confirming password reset with mismatched passwords"""
+        confirm_url = reverse('passwordReset')
+        confirm_data = {
+            'email': self.user.email,
+            'code': 'SOMECODE',
+            'new_password': 'password1',
+            'new_password_confirm': 'password2'
+        }
+        response = self.client.post(confirm_url, confirm_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
 
     def test_confirm_password_reset_expired_code(self):
         """Test confirming password reset with an expired code (if applicable)"""
@@ -431,6 +476,31 @@ class PasswordResetViewTests(APITestCase):
         # Ensure the password was not changed
         self.user.refresh_from_db()
         self.assertFalse(self.user.check_password('anothernewpassword'))
+        
+    def test_confirm_password_reset_code_already_used(self):
+        """Test confirming password reset with a code that has already been used"""
+        # Create a used password reset code
+        password_reset_obj = PasswordReset.objects.create(
+            user=self.user,
+            code="USEDCODE",
+            used=True,
+            date_used=timezone.now()
+        )
+        
+        # Attempt to use the code again
+        confirm_url = reverse('passwordReset')
+        confirm_data = {
+            'email': self.user.email,
+            'code': password_reset_obj.code,
+            'new_password': 'newpassword123',
+            'new_password_confirm': 'newpassword123'
+        }
+        response = self.client.post(confirm_url, confirm_data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        
+        # Ensure the password was not changed
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.check_password('newpassword123'))
 
 
 class MessageAPIViewTests(APITestCase):
