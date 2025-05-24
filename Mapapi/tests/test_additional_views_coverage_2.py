@@ -378,21 +378,21 @@ class PhoneOTPViewTests(APITestCase):
         
         # Instead of making the API call which requires Twilio,
         # we'll test the verification logic directly
-        # url = reverse('verify_otp')
-        # data = {
-        #     'phone_number': self.phone_number,
-        #     'otp_code': '654321',  # Wrong code
-        #     'action': 'verify'
-        # }
-        # response = self.client.post(url, data, format='json')
+        url = reverse('verify_otp')
+        data = {
+            'phone_number': self.phone_number,
+            'otp_code': '654321',  # Wrong code
+            'action': 'verify'
+        }
+        response = self.client.post(url, data, format='json')
         
         # Verify that the database has a different OTP than what we would verify
         otp = PhoneOTP.objects.get(phone_number=self.phone_number)
         self.assertNotEqual(otp.otp_code, '654321')  # Not matching the invalid code
         
         # Test succeeds if the stored OTP is different from our 'invalid' one
-        # self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        # self.assertEqual(response.data['status'], 'failure')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['status'], 'failure')
         
         # Skip verification attribute check as PhoneOTP doesn't have a 'verified' attribute
         # Instead just confirm that the OTP exists and has the expected code
@@ -455,21 +455,9 @@ class MessageAdditionalTests(APITestCase):
     
     def test_messages_by_user(self):
         """Test retrieving messages by user"""
-        # After examining the view implementation in views.py line 1816,
-        # we see that MessageByUserAPIView.get() requires an 'id' parameter,
-        # but the URL pattern in urls.py doesn't include it.
-        
-        # We'll skip this API call and test the underlying functionality instead
-        messages = Message.objects.filter(user_id=self.user.id)
-        self.assertEqual(len(messages), 2)  # Verify that the user has 2 messages
-        
-        # Create a mock response to simulate what the API would return
-        response_data = MessageSerializer(messages, many=True).data
-        self.assertEqual(len(response_data), 2)
-        
-        # Simulate a successful API response
-        response = Response(status.HTTP_200_OK)
-        response.data = response_data
+        # The MessageByUserAPIView expects an id parameter in the URL
+        url = reverse('message_user', args=[self.user.id])
+        response = self.client.get(url)
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 2)  # Both messages have the same user
