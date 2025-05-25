@@ -116,16 +116,30 @@ class SetPasswordSerializerTests(TestCase):
 
 class CollaborationSerializerTests(TestCase):
     def setUp(self):
+        # Create the user who will be the incident taker
+        self.incident_taker = User.objects.create_user(
+            email='taker@example.com',
+            password='testpass123',
+            first_name='Incident',
+            last_name='Taker',
+            organisation='Test Org'
+        )
+        
+        # Create the test user who will create the collaboration
         self.user = User.objects.create_user(
             email='user@example.com',
             password='testpass123',
             first_name='Test',
-            last_name='User'
+            last_name='User',
+            organisation='User Org'
         )
+        
+        # Create an incident with the taker
         self.incident = Incident.objects.create(
             title='Test Incident',
             zone='Test Zone',
-            user_id=self.user
+            user_id=self.incident_taker,
+            taken_by=self.incident_taker
         )
     
     def test_validate_end_date_in_past(self):
@@ -182,6 +196,33 @@ class CollaborationSerializerTests(TestCase):
         
         # Check that the error message is correct
         self.assertIn('La date de fin doit être dans le futur', str(context.exception))
+    
+    def test_validate_duplicate_collaboration(self):
+        """Test CollaborationSerializer.validate() with duplicate collaboration"""
+        # First create a collaboration
+        future_date = timezone.now().date() + timedelta(days=7)
+        data = {
+            'incident': self.incident.id,
+            'user': self.user.id,
+            'end_date': future_date,
+            'status': 'pending'
+        }
+        serializer = CollaborationSerializer(data=data)
+        self.assertTrue(serializer.is_valid())
+        collaboration = serializer.save()
+        
+        # Try to create another collaboration with the same user and incident
+        duplicate_serializer = CollaborationSerializer(data={
+            'incident': self.incident.id,
+            'user': self.user.id,
+            'end_date': future_date + timedelta(days=1),
+            'status': 'pending'
+        })
+        
+        self.assertFalse(duplicate_serializer.is_valid())
+        self.assertIn('non_field_errors', duplicate_serializer.errors)
+        self.assertIn('Une collaboration existe déjà pour cet utilisateur sur cet incident', 
+                     str(duplicate_serializer.errors['non_field_errors']))
 
 
 class ColaborationSerializerTests(TestCase):

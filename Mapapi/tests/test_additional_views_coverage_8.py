@@ -65,6 +65,27 @@ class LoginViewTests(APITestCase):
         response = self.client.post(self.url, data, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+    
+    def test_login_inactive_user(self):
+        """Test login with an inactive user"""
+        # Create an inactive user
+        inactive_user = User.objects.create_user(
+            email='inactive@example.com',
+            password='testpass123',
+            first_name='Inactive',
+            last_name='User',
+            is_active=False
+        )
+        
+        data = {
+            'email': 'inactive@example.com',
+            'password': 'testpass123'
+        }
+        
+        response = self.client.post(self.url, data, format='json')
+        
+        # Should return 401 Unauthorized for inactive users
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 @patch.object(EmailMultiAlternatives, 'send')
