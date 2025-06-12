@@ -144,13 +144,15 @@ ACCOUNT_EMAIL_REQUIRED = True
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'HOST': os.environ.get("DB_HOST", "localhost"),
-        'NAME': os.environ.get("POSTGRES_DB", "mapaction"),
-        'USER': os.environ.get("POSTGRES_USER", "root"),
-        'PASSWORD': os.environ.get("POSTGRES_PASSWORD", "postges"),
-        'PORT': os.environ.get("PORT", "5432"),
+        'HOST': os.environ.get("DB_HOST"),
+        'NAME': os.environ.get("POSTGRES_DB"),
+        'USER': os.environ.get("POSTGRES_USER"),
+        'PASSWORD': os.environ.get("POSTGRES_PASSWORD"),
+        'PORT': os.environ.get("PORT"),
+        'OPTIONS': {
+            'sslmode': 'require',
+        },
     },
-   
 }
 
 
