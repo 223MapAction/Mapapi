@@ -33,7 +33,6 @@ services:
         command: tail -f /dev/null # Keep container running
         volumes:
             - .:/app # Mount the entire project directory to watch file changes
-            - uploads_data_test:/app/uploads
         expose:
             - 8000
         env_file:
@@ -56,6 +55,9 @@ services:
             - WEB_CLIENT_ID=${WEB_CLIENT_ID}
             - WEB_CLIENT_SECRET=${WEB_CLIENT_SECRET}
             - REDIS_HOST=redis
+            - SUPABASE_URL=${SUPABASE_URL}
+            - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+            - USE_SUPABASE_STORAGE=${USE_SUPABASE_STORAGE}
         depends_on:
             postgres-db:
                 condition: service_healthy
@@ -92,5 +94,4 @@ networks:
 
 volumes:
     postgres_data_test:
-    uploads_data_test:
     redis_data_test:

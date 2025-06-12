@@ -27,7 +27,6 @@ services:
                   python3 manage.py migrate &&
                   daphne backend.asgi:application -p 8000 -b 0.0.0.0"
         volumes:
-            - ~/uploads:/app/uploads
             - .:/app
         expose:
             - 8000
@@ -54,6 +53,9 @@ services:
             - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
             - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
             - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
+            - SUPABASE_URL=${SUPABASE_URL}
+            - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+            - USE_SUPABASE_STORAGE=${USE_SUPABASE_STORAGE}
         depends_on:
             # - postgres-db
             - redis

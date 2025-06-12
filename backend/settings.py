@@ -193,8 +193,17 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, "static")
+
+# Legacy local storage settings - kept for backwards compatibility
 MEDIA_ROOT = os.path.join(BASE_DIR, 'uploads')
 MEDIA_URL = '/uploads/'
+
+# Supabase Storage Configuration
+SUPABASE_URL = os.environ.get('SUPABASE_URL')
+SUPABASE_ANON_KEY = os.environ.get('SUPABASE_ANON_KEY')
+
+# Specify that we're using Supabase Storage
+USE_SUPABASE_STORAGE = os.environ.get('USE_SUPABASE_STORAGE', 'True').lower() == 'true'
 
 
 
