@@ -14,7 +14,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-4k+g*9g=6h&_8@s05ps!f)n!ivs4=yujv+rx(obnku=eyz3&jb'
+# SECRET_KEY = 'django-insecure-4k+g*9g=6h&_8@s05ps!f)n!ivs4=yujv+rx(obnku=eyz3&jb'
+SECRET_KEY = os.environ.get("SECRET_KEY")
 
 # À changer quand on le mettra en production
 DEBUG = True
@@ -145,11 +146,11 @@ ACCOUNT_EMAIL_REQUIRED = True
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'HOST': os.environ.get("DB_HOST", "localhost"),
-        'NAME': os.environ.get("POSTGRES_DB", "mapaction"),
-        'USER': os.environ.get("POSTGRES_USER", "root"),
-        'PASSWORD': os.environ.get("POSTGRES_PASSWORD", "postges"),
-        'PORT': os.environ.get("PORT", "5432"),
+        'HOST': os.environ.get("DB_HOST"),
+        'NAME': os.environ.get("POSTGRES_DB"),
+        'USER': os.environ.get("POSTGRES_USER"),
+        'PASSWORD': os.environ.get("POSTGRES_PASSWORD"),
+        'PORT': os.environ.get("PORT"),
     },
    
 }
@@ -284,6 +285,10 @@ LOGGING = {
     },
 }
 
+print("DEBUG ENV CHECK - SECRET_KEY:", os.environ.get("SECRET_KEY"))
+print("DEBUG ENV CHECK - DB_HOST:", os.environ.get("DB_HOST"))
+print("DEBUG ENV CHECK - port:", os.environ.get("PORT"))
+print("DEBUG ENV CHECK - user:", os.environ.get("POSTGRES_USER"))
 
 
 AUTH_USER_MODEL = 'Mapapi.User'
