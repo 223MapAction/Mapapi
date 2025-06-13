@@ -151,8 +151,10 @@ DATABASES = {
         'USER': os.environ.get("POSTGRES_USER"),
         'PASSWORD': os.environ.get("POSTGRES_PASSWORD"),
         'PORT': os.environ.get("PORT"),
+        'OPTIONS': {
+            'sslmode': 'require',
+        },
     },
-   
 }
 
 
@@ -293,9 +295,9 @@ print("DEBUG ENV CHECK - user:", os.environ.get("POSTGRES_USER"))
 
 AUTH_USER_MODEL = 'Mapapi.User'
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'mail.map-action.com'
+EMAIL_HOST = os.environ.get("EMAIL_HOST")
 EMAIL_USE_TLS = True  
 EMAIL_USE_SSL = False 
 EMAIL_PORT = 2525
-EMAIL_HOST_USER = 'contact@map-action.com'
-EMAIL_HOST_PASSWORD = 'Equipes55'
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD")

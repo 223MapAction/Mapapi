@@ -120,115 +120,172 @@ jobs:
                       echo "Coverage meets threshold"
                   fi
 
+    # deploy:
+    #     needs: setup-and-test
+    #     if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    #     runs-on: self-hosted
+    #     permissions: write-all
+    #     steps:
+    #         - name: Pre-checkout cleanup
+    #           run: |
+    #               # Stop any Python processes
+    #               sudo pkill -f python || true
+
+    #               # Remove problematic __pycache__ directories
+    #               sudo find /home/azureuser/actions-runner/_work/Mapapi/Mapapi -type d -name "__pycache__" -exec rm -rf {} + || true
+
+    #               # Force remove the entire directory if needed
+    #               sudo rm -rf /home/azureuser/actions-runner/_work/Mapapi/Mapapi || true
+
+    #               # Recreate directory with proper permissions
+    #               sudo mkdir -p /home/azureuser/actions-runner/_work/Mapapi/Mapapi
+    #               sudo chown -R $USER:$USER /home/azureuser/actions-runner/_work/Mapapi/Mapapi
+    #               sudo chmod -R 777 /home/azureuser/actions-runner/_work/Mapapi/Mapapi
+
+    #         - name: Checkout Repository
+    #           uses: actions/checkout@v3
+
+    #         - name: Login to Docker Hub
+    #           uses: docker/login-action@v2
+    #           with:
+    #               username: ${{ secrets.DOCKER_USERNAME }}
+    #               password: ${{ secrets.DOCKER_PASSWORD }}
+
+    #         - name: Create entrypoint.sh
+    #           run: |
+    #               cat > entrypoint.sh << 'EOL'
+    #               #!/bin/sh
+    #               set -e
+
+    #               # Wait for postgres to be ready
+    #               python manage.py wait_for_db
+
+    #               # Apply database migrations
+    #               python manage.py migrate
+
+    #               # Create superuser if it doesn't exist
+    #               python manage.py createsuperuser --noinput || true
+
+    #               # Start server
+    #               exec python manage.py runserver 0.0.0.0:8000
+    #               EOL
+    #           shell: bash
+    #           continue-on-error: false
+
+    #         - name: Create .env file
+    #           run: |
+    #               {
+    #                 echo "ALLOWED_HOSTS=${{ secrets.ALLOWED_HOSTS }}"
+    #                 echo "ANDROID_CLIENT_ID=${{ secrets.ANDROID_CLIENT_ID }}"
+    #                 echo "DB_HOST=${{ secrets.DB_HOST }}"
+    #                 echo "DJANGO_SUPERUSER_EMAIL=${{ secrets.DJANGO_SUPERUSER_EMAIL }}"
+    #                 echo "DJANGO_SUPERUSER_FIRST_NAME=${{ secrets.DJANGO_SUPERUSER_FIRST_NAME }}"
+    #                 echo "DJANGO_SUPERUSER_LAST_NAME=${{ secrets.DJANGO_SUPERUSER_LAST_NAME }}"
+    #                 echo "DJANGO_SUPERUSER_PASSWORD=${{ secrets.DJANGO_SUPERUSER_PASSWORD }}"
+    #                 echo "DJANGO_SUPERUSER_USERNAME=${{ secrets.DJANGO_SUPERUSER_USERNAME }}"
+    #                 echo "IOS_CLIENT_ID=${{ secrets.IOS_CLIENT_ID }}"
+    #                 echo "PORT=${{ secrets.PORT }}"
+    #                 echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}"
+    #                 echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}"
+    #                 echo "POSTGRES_DB=${{ secrets.POSTGRES_DB }}"
+    #                 echo "SECRET_KEY=${{ secrets.SECRET_KEY }}"
+    #                 echo "WEB_CLIENT_ID=${{ secrets.WEB_CLIENT_ID }}"
+    #                 echo "WEB_CLIENT_SECRET=${{ secrets.WEB_CLIENT_SECRET }}"
+    #                 echo "TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}"
+    #                 echo "TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}"
+    #                 echo "TWILIO_PHONE_NUMBER=${{ secrets.TWILIO_PHONE_NUMBER }}"
+    #               } > .env
+
+    #         - name: Build and Run Docker Compose
+    #           env:
+    #               ALLOWED_HOSTS: ${{ secrets.ALLOWED_HOSTS }}
+    #               ANDROID_CLIENT_ID: ${{ secrets.ANDROID_CLIENT_ID }}
+    #               DB_HOST: ${{ secrets.DB_HOST }}
+    #               DJANGO_SUPERUSER_EMAIL: ${{ secrets.DJANGO_SUPERUSER_EMAIL }}
+    #               DJANGO_SUPERUSER_FIRST_NAME: ${{ secrets.DJANGO_SUPERUSER_FIRST_NAME }}
+    #               DJANGO_SUPERUSER_LAST_NAME: ${{ secrets.DJANGO_SUPERUSER_LAST_NAME }}
+    #               DJANGO_SUPERUSER_PASSWORD: ${{ secrets.DJANGO_SUPERUSER_PASSWORD }}
+    #               DJANGO_SUPERUSER_USERNAME: ${{ secrets.DJANGO_SUPERUSER_USERNAME }}
+    #               IOS_CLIENT_ID: ${{ secrets.IOS_CLIENT_ID }}
+    #               PORT: ${{ secrets.PORT }}
+    #               POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+    #               POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+    #               POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+    #               SECRET_KEY: ${{ secrets.SECRET_KEY }}
+    #               TEST_POSTGRES_DB: ${{ secrets.TEST_POSTGRES_DB }}
+    #               WEB_CLIENT_ID: ${{ secrets.WEB_CLIENT_ID }}
+    #               WEB_CLIENT_SECRET: ${{ secrets.WEB_CLIENT_SECRET }}
+    #               TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+    #               TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+    #               TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER }}
+    #           run: |
+    #               # Conditionally remove existing network if it exists
+    #               docker network ls | grep -q mapapi_micro-services-network && docker network rm mapapi_micro-services-network || true
+
+    #               # Build and run Docker Compose
+    #               docker-compose -f _cd_pipeline.yml up --build -d
+
+    #         - name: Post-deployment cleanup
+    #           if: always()
+    #           run: |
+    #               # Clean up dangling volumes and images
+    #               docker system prune -af --volumes
+    #               docker image prune -af
+    #               docker volume prune -f
+
     deploy:
-        needs: setup-and-test
-        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        runs-on: self-hosted
-        permissions: write-all
-        steps:
-            - name: Pre-checkout cleanup
-              run: |
-                  # Stop any Python processes
-                  sudo pkill -f python || true
+      needs: setup-and-test
+      if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      runs-on: ubuntu-latest
 
-                  # Remove problematic __pycache__ directories
-                  sudo find /home/azureuser/actions-runner/_work/Mapapi/Mapapi -type d -name "__pycache__" -exec rm -rf {} + || true
+      steps:
+        - name: Set up SSH connection
+          run: |
+            mkdir -p ~/.ssh
+            echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+            chmod 600 ~/.ssh/id_rsa
+            ssh-keyscan -H 13.36.39.58 >> ~/.ssh/known_hosts
 
-                  # Force remove the entire directory if needed
-                  sudo rm -rf /home/azureuser/actions-runner/_work/Mapapi/Mapapi || true
+        - name: Deploy to EC2 instance
+          run: |
+            ssh ec2-user@13.36.39.58 << 'EOF'
+              cd ~/app
 
-                  # Recreate directory with proper permissions
-                  sudo mkdir -p /home/azureuser/actions-runner/_work/Mapapi/Mapapi
-                  sudo chown -R $USER:$USER /home/azureuser/actions-runner/_work/Mapapi/Mapapi
-                  sudo chmod -R 777 /home/azureuser/actions-runner/_work/Mapapi/Mapapi
+              if [ ! -d ".git" ]; then
+                git clone https://github.com/223MapAction/Mapapi.git .
+              fi
 
-            - name: Checkout Repository
-              uses: actions/checkout@v3
+              git pull origin main
 
-            - name: Login to Docker Hub
-              uses: docker/login-action@v2
-              with:
-                  username: ${{ secrets.DOCKER_USERNAME }}
-                  password: ${{ secrets.DOCKER_PASSWORD }}
+              echo "Création du fichier .env..."
+              cat > .env <<EOL
+              ALLOWED_HOSTS: ${{ secrets.ALLOWED_HOSTS }}
+              ANDROID_CLIENT_ID: ${{ secrets.ANDROID_CLIENT_ID }}
+              DB_HOST: ${{ secrets.DB_HOST }}
+              DJANGO_SUPERUSER_EMAIL: ${{ secrets.DJANGO_SUPERUSER_EMAIL }}
+              DJANGO_SUPERUSER_FIRST_NAME: ${{ secrets.DJANGO_SUPERUSER_FIRST_NAME }}
+              DJANGO_SUPERUSER_LAST_NAME: ${{ secrets.DJANGO_SUPERUSER_LAST_NAME }}
+              DJANGO_SUPERUSER_PASSWORD: ${{ secrets.DJANGO_SUPERUSER_PASSWORD }}
+              DJANGO_SUPERUSER_USERNAME: ${{ secrets.DJANGO_SUPERUSER_USERNAME }}
+              IOS_CLIENT_ID: ${{ secrets.IOS_CLIENT_ID }}
+              PORT: ${{ secrets.PORT }}
+              POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+              POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+              POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+              SECRET_KEY: ${{ secrets.SECRET_KEY }}
+              TEST_POSTGRES_DB: ${{ secrets.TEST_POSTGRES_DB }}
+              WEB_CLIENT_ID: ${{ secrets.WEB_CLIENT_ID }}
+              WEB_CLIENT_SECRET: ${{ secrets.WEB_CLIENT_SECRET }}
+              TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+              TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+              TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER }}
+              SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+              SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+              USE_SUPABASE_STORAGE: ${{ secrets.USE_SUPABASE_STORAGE }}
+              EMAIL_HOST: ${{ secrets.EMAIL_HOST }}
+              EMAIL_HOST_USER: ${{ secrets.EMAIL_HOST_USER }}
+              EMAIL_HOST_PASSWORD: ${{ secrets.EMAIL_HOST_PASSWORD }}
+              EOL
 
-            - name: Create entrypoint.sh
-              run: |
-                  cat > entrypoint.sh << 'EOL'
-                  #!/bin/sh
-                  set -e
-
-                  # Wait for postgres to be ready
-                  python manage.py wait_for_db
-
-                  # Apply database migrations
-                  python manage.py migrate
-
-                  # Create superuser if it doesn't exist
-                  python manage.py createsuperuser --noinput || true
-
-                  # Start server
-                  exec python manage.py runserver 0.0.0.0:8000
-                  EOL
-              shell: bash
-              continue-on-error: false
-
-            - name: Create .env file
-              run: |
-                  {
-                    echo "ALLOWED_HOSTS=${{ secrets.ALLOWED_HOSTS }}"
-                    echo "ANDROID_CLIENT_ID=${{ secrets.ANDROID_CLIENT_ID }}"
-                    echo "DB_HOST=${{ secrets.DB_HOST }}"
-                    echo "DJANGO_SUPERUSER_EMAIL=${{ secrets.DJANGO_SUPERUSER_EMAIL }}"
-                    echo "DJANGO_SUPERUSER_FIRST_NAME=${{ secrets.DJANGO_SUPERUSER_FIRST_NAME }}"
-                    echo "DJANGO_SUPERUSER_LAST_NAME=${{ secrets.DJANGO_SUPERUSER_LAST_NAME }}"
-                    echo "DJANGO_SUPERUSER_PASSWORD=${{ secrets.DJANGO_SUPERUSER_PASSWORD }}"
-                    echo "DJANGO_SUPERUSER_USERNAME=${{ secrets.DJANGO_SUPERUSER_USERNAME }}"
-                    echo "IOS_CLIENT_ID=${{ secrets.IOS_CLIENT_ID }}"
-                    echo "PORT=${{ secrets.PORT }}"
-                    echo "POSTGRES_USER=${{ secrets.POSTGRES_USER }}"
-                    echo "POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}"
-                    echo "POSTGRES_DB=${{ secrets.POSTGRES_DB }}"
-                    echo "SECRET_KEY=${{ secrets.SECRET_KEY }}"
-                    echo "WEB_CLIENT_ID=${{ secrets.WEB_CLIENT_ID }}"
-                    echo "WEB_CLIENT_SECRET=${{ secrets.WEB_CLIENT_SECRET }}"
-                    echo "TWILIO_ACCOUNT_SID=${{ secrets.TWILIO_ACCOUNT_SID }}"
-                    echo "TWILIO_AUTH_TOKEN=${{ secrets.TWILIO_AUTH_TOKEN }}"
-                    echo "TWILIO_PHONE_NUMBER=${{ secrets.TWILIO_PHONE_NUMBER }}"
-                  } > .env
-
-            - name: Build and Run Docker Compose
-              env:
-                  ALLOWED_HOSTS: ${{ secrets.ALLOWED_HOSTS }}
-                  ANDROID_CLIENT_ID: ${{ secrets.ANDROID_CLIENT_ID }}
-                  DB_HOST: ${{ secrets.DB_HOST }}
-                  DJANGO_SUPERUSER_EMAIL: ${{ secrets.DJANGO_SUPERUSER_EMAIL }}
-                  DJANGO_SUPERUSER_FIRST_NAME: ${{ secrets.DJANGO_SUPERUSER_FIRST_NAME }}
-                  DJANGO_SUPERUSER_LAST_NAME: ${{ secrets.DJANGO_SUPERUSER_LAST_NAME }}
-                  DJANGO_SUPERUSER_PASSWORD: ${{ secrets.DJANGO_SUPERUSER_PASSWORD }}
-                  DJANGO_SUPERUSER_USERNAME: ${{ secrets.DJANGO_SUPERUSER_USERNAME }}
-                  IOS_CLIENT_ID: ${{ secrets.IOS_CLIENT_ID }}
-                  PORT: ${{ secrets.PORT }}
-                  POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-                  POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-                  POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-                  SECRET_KEY: ${{ secrets.SECRET_KEY }}
-                  TEST_POSTGRES_DB: ${{ secrets.TEST_POSTGRES_DB }}
-                  WEB_CLIENT_ID: ${{ secrets.WEB_CLIENT_ID }}
-                  WEB_CLIENT_SECRET: ${{ secrets.WEB_CLIENT_SECRET }}
-                  TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
-                  TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
-                  TWILIO_PHONE_NUMBER: ${{ secrets.TWILIO_PHONE_NUMBER }}
-              run: |
-                  # Conditionally remove existing network if it exists
-                  docker network ls | grep -q mapapi_micro-services-network && docker network rm mapapi_micro-services-network || true
-
-                  # Build and run Docker Compose
-                  docker-compose -f _cd_pipeline.yml up --build -d
-
-            - name: Post-deployment cleanup
-              if: always()
-              run: |
-                  # Clean up dangling volumes and images
-                  docker system prune -af --volumes
-                  docker image prune -af
-                  docker volume prune -f
+              ./deploy.sh
+            EOF

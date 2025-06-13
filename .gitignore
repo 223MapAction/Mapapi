@@ -93,3 +93,6 @@ celerybeat-schedule
 
 # macOS
 .DS_Store
+
+
+uploads/

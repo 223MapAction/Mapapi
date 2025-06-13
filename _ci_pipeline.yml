@@ -10,7 +10,7 @@ services:
         ports:
             - "5432:5432"
         volumes:
-            - ~/postgres_store_test:/var/lib/postgresql/data
+            - postgres_data_test:/var/lib/postgresql/data
         networks:
             micro-services-network:
                 ipv4_address: 192.168.0.10
@@ -32,7 +32,8 @@ services:
         tty: true
         command: tail -f /dev/null # Keep container running
         volumes:
-            - ~/uploads_test:/app/uploads
+            - .:/app # Mount the entire project directory to watch file changes
+            - uploads_data_test:/app/uploads
         expose:
             - 8000
         env_file:
@@ -74,7 +75,7 @@ services:
             micro-services-network:
                 ipv4_address: 192.168.0.12
         volumes:
-            - ~/redis_data_test:/data
+            - redis_data_test:/data
         healthcheck:
             test: ["CMD", "redis-cli", "ping"]
             interval: 5s
@@ -88,3 +89,8 @@ networks:
             config:
                 - subnet: "192.168.0.0/24"
                   gateway: "192.168.0.1"
+
+volumes:
+    postgres_data_test:
+    uploads_data_test:
+    redis_data_test:
