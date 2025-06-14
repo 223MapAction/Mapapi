@@ -301,3 +301,6 @@ EMAIL_USE_SSL = False
 EMAIL_PORT = 2525
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD")
+
+# Supabase storage configuration
+USE_SUPABASE_STORAGE = os.environ.get('USE_SUPABASE_STORAGE', 'False').lower() in ('true', '1', 't')
