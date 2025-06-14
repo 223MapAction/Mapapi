@@ -9,19 +9,25 @@ on:
             - main
 
 jobs:
-    # cleanup:
-    #     runs-on: ubuntu-latest
-    #     steps:
-    #         - name: Free up disk space and clean workspace
-    #           run: |
-    #               sudo docker system prune -af
-    #               sudo docker volume prune -f
-    #               sudo apt-get clean
-    #               sudo df -h
-
-    #               # Add permissions cleanup for Python cache
-    #               sudo rm -rf /home/azureuser/actions-runner/_work/Mapapi/Mapapi/**/__pycache__
-    #               sudo chmod -R 777 /home/azureuser/actions-runner/_work/Mapapi/Mapapi || true
+    cleanup:
+        runs-on: self-hosted
+        steps:
+            - name: Free up disk space and clean workspace
+              run: |
+                  # Clean up Docker resources
+                  docker system prune -af
+                  docker volume prune -f
+                  
+                  # Display disk usage
+                  df -h
+                  
+                  # Clean up Python cache files
+                  sudo find /home/ec2-user/actions-runner/_work/Mapapi -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+                  sudo find /home/ec2-user/actions-runner/_work/Mapapi -name "*.pyc" -exec rm -f {} + 2>/dev/null || true
+                  
+                  # Fix permissions
+                  sudo chown -R ec2-user:ec2-user /home/ec2-user/actions-runner/_work/Mapapi || true
+                  sudo chmod -R 755 /home/ec2-user/actions-runner/_work/Mapapi || true
 
     # setup-and-test:
     #     needs: cleanup
@@ -234,6 +240,7 @@ jobs:
     #               docker volume prune -f
 
     deploy:
+        needs: cleanup
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         runs-on: self-hosted
         steps:
