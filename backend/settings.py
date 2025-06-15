@@ -14,17 +14,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 # SECURITY WARNING: keep the secret key used in production secret!
-# SECRET_KEY = 'django-insecure-4k+g*9g=6h&_8@s05ps!f)n!ivs4=yujv+rx(obnku=eyz3&jb'
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
 # À changer quand on le mettra en production
 DEBUG = True
 
 
-ALLOWED_HOSTS = [os.environ.get("ALLOWED_HOSTS", "localhost")]
+# Split the comma-separated ALLOWED_HOSTS environment variable into a list
+allowed_hosts_value = os.environ.get("ALLOWED_HOSTS", "localhost")
+ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_value.split(",")]
 
-
-
+# Add CSRF trusted origins for HTTPS
+CSRF_TRUSTED_ORIGINS = [f"https://{host.strip()}" for host in allowed_hosts_value.split(",")]
 
 
 # Application definition
