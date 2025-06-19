@@ -137,7 +137,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(_('active'), default=True)
     is_staff = models.BooleanField(default=False)
     avatar = models.ImageField(default="avatars/default.png", upload_to='avatars/', 
-                        storage=ImageStorage() if settings.USE_SUPABASE_STORAGE else None,
+                        storage=ImageStorage(),
                         null=True, blank=True)
     password_reset_count = models.DecimalField(max_digits=10, decimal_places=0, null=True, blank=True, default=0)
     address = models.CharField(_('adress'), max_length=255, blank=True, null=True)
@@ -216,13 +216,13 @@ class Incident(models.Model):
                             null=False)
     description = models.TextField(max_length=500, blank=True, null=True)
     photo = models.ImageField(upload_to='incidents/', 
-                        storage=ImageStorage() if settings.USE_SUPABASE_STORAGE else None, 
+                        storage=ImageStorage(), 
                         null=True, blank=True)
     video = models.FileField(upload_to='incidents/', 
-                        storage=VideoStorage() if settings.USE_SUPABASE_STORAGE else None, 
+                        storage=VideoStorage(), 
                         blank=True, null=True)
     audio = models.FileField(upload_to='incidents/', 
-                        storage=VoiceStorage() if settings.USE_SUPABASE_STORAGE else None, 
+                        storage=VoiceStorage(), 
                         blank=True, null=True)
     user_id = models.ForeignKey('User', db_column='user_incid_id', related_name='user_incident',
                                 on_delete=models.CASCADE, null=True)
@@ -253,16 +253,16 @@ class Evenement(models.Model):
                             null=False)
     description = models.TextField(max_length=500, blank=True, null=True)
     photo = models.ImageField(upload_to='events/',
-                        storage=ImageStorage() if settings.USE_SUPABASE_STORAGE else None,
+                        storage=ImageStorage(),
                         null=True, blank=True)
     date = models.DateTimeField(null=True)
     lieu = models.CharField(max_length=250, blank=False,
                             null=False)
     video = models.FileField(upload_to='events/',
-                        storage=VideoStorage() if settings.USE_SUPABASE_STORAGE else None,
+                        storage=VideoStorage(),
                         blank=True, null=True)
     audio = models.FileField(upload_to='events/',
-                        storage=VoiceStorage() if settings.USE_SUPABASE_STORAGE else None,
+                        storage=VoiceStorage(),
                         blank=True, null=True)
     user_id = models.ForeignKey('User', db_column='user_event_id', related_name='user_event', on_delete=models.CASCADE,
                                 null=True)
@@ -314,7 +314,7 @@ class Rapport(models.Model):
     incidents = models.ManyToManyField('Incident', blank=True)
     disponible = models.BooleanField(_('active'), default=False)
     file = models.FileField(upload_to='reports/',
-                        storage=ImageStorage() if settings.USE_SUPABASE_STORAGE else None,
+                        storage=ImageStorage(),
                         blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -339,7 +339,7 @@ class Zone(models.Model):
     longitude = models.CharField(max_length=250, blank=True,
                                  null=True)
     photo = models.ImageField(upload_to='zones/',
-                        storage=ImageStorage() if settings.USE_SUPABASE_STORAGE else None,
+                        storage=ImageStorage(),
                         null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
