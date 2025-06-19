@@ -381,18 +381,34 @@ class IncidentAPIListView(generics.CreateAPIView):
         longitude = serializer.data.get("longitude")
         latitude = serializer.data.get("lattitude")
         print("Longitude:", longitude)
-        incident_instance = Incident.objects.get(longitude=longitude)
-        incident_id = incident_instance.id
+        try:
+            incident_instance = Incident.objects.get(longitude=longitude)
+            incident_id = incident_instance.id
+            print(f"Created incident ID: {incident_id}")
+        except Incident.DoesNotExist:
+            print("Warning: Could not retrieve created incident")
+        except Incident.MultipleObjectsReturned:
+            print("Warning: Multiple incidents found with same longitude")
 
-        print(incident_id)
+        if "user_id" in request.data and request.data["user_id"] and request.data["user_id"].strip():
+            try:
+                user = User.objects.get(id=request.data["user_id"])
+                user.points += 1
+                user.save()
+            except User.DoesNotExist:
+                # Log but don't break the flow if user doesn't exist
+                print(f"Warning: No user found with ID {request.data['user_id']}")
+            except ValueError:
+                # Log but don't break if user_id isn't a valid integer
+                print(f"Warning: Invalid user ID format: {request.data['user_id']}")
 
-        if "user_id" in request.data:
-            user = User.objects.get(id=request.data["user_id"])
-            user.points += 1
-            user.save()
-
-        if "video" in request.data:
-            subprocess.check_call(['python', f"{settings.BASE_DIR}" + '/convertvideo.py'])
+        if "video" in request.data and request.data["video"]:
+            try:
+                subprocess.check_call(['python', f"{settings.BASE_DIR}" + '/convertvideo.py'])
+            except subprocess.CalledProcessError as e:
+                print(f"Warning: Video conversion failed: {e}")
+            except Exception as e:
+                print(f"Warning: Unexpected error during video conversion: {e}")
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
