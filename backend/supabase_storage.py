@@ -45,12 +45,10 @@ class SupabaseStorage(Storage):
             folder_path = path.rsplit('/', 1)[0] + '/'
             try:
                 # Check if folder exists by listing with prefix
-                folders = self._get_storage().list(path=folder_path, limit=1)
-                if not folders:
-                    # Create folder with an empty placeholder file
-                    self._get_storage().upload(folder_path + '.placeholder', b'')
+                folders = self._get_storage().list(path=folder_path)
+                # If we get here, the folder likely exists already
             except StorageException:
-                # Create folder with an empty placeholder file
+                # Try to create the folder with an empty placeholder file
                 try:
                     self._get_storage().upload(folder_path + '.placeholder', b'')
                 except StorageException as e:
@@ -98,7 +96,7 @@ class SupabaseStorage(Storage):
                 folder_path = name.rsplit('/', 1)[0]
                 filename = name.split('/')[-1]
                 # List files in the specific folder
-                files = self._get_storage().list(path=folder_path)
+                files = self._get_storage().list(folder_path)
             else:
                 # Files at bucket root
                 files = self._get_storage().list()
@@ -138,7 +136,7 @@ class SupabaseStorage(Storage):
                 folder_path = name.rsplit('/', 1)[0]
                 filename = name.split('/')[-1]
                 # List files in the specific folder
-                files = self._get_storage().list(path=folder_path)
+                files = self._get_storage().list(folder_path)
             else:
                 # Files at bucket root
                 files = self._get_storage().list()
