@@ -112,14 +112,15 @@ class SupabaseStorage(Storage):
         Return the public URL for a file
         """
         try:
-            # Always try with the full path first (including folder structure)
-            return self._get_storage().get_public_url(name)
+            # Use the sign endpoint instead of public as it's what Supabase now requires
+            # The sign endpoint generates a URL with a token that allows access to the file
+            return self._get_storage().create_signed_url(name, 60*60*24*365) # 1 year expiry
         except StorageException as e:
             try:
                 # As fallback, try with just the filename
                 if '/' in name:
                     filename = name.split('/')[-1]
-                    return self._get_storage().get_public_url(filename)
+                    return self._get_storage().create_signed_url(filename, 60*60*24*365)
                 else:
                     # Already tried with the name, so it truly failed
                     return None
