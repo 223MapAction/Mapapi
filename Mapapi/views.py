@@ -25,6 +25,7 @@ from backend.settings import *
 from django.views import View
 import json
 import datetime
+from datetime import timedelta
 # import requests
 from django.template.loader import get_template, render_to_string
 from django.utils.html import strip_tags
@@ -45,6 +46,8 @@ import time
 import logging
 from django.utils import timezone
 from datetime import timedelta
+
+from django.utils.dateparse import parse_date
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 import random
@@ -53,9 +56,14 @@ import string
 def get_random(length=6):
     return ''.join(random.choices(string.digits, k=length))
 
+
 logger = logging.getLogger(__name__)
 
 N = 7
+
+def get_random():
+    """Generate a random 7-character code for password reset"""
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=7))
 
 class CustomPageNumberPagination(PageNumberPagination):
     page_size = 100
@@ -360,43 +368,52 @@ class IncidentAPIListView(generics.CreateAPIView):
 
     def post(self, request, format=None):
         serializer = IncidentSerializer(data=request.data)
-        lat = ""
-        lon = ""
-        if "lattitude" in request.data:
-            lat = request.data["lattitude"]
-        if "longitude" in request.data:
-            lon = request.data["longitude"]
         
-        zone, created = Zone.objects.get_or_create(name=request.data["zone"], defaults={'lattitude': lat, 'longitude': lon})
-        
-        if serializer.is_valid():
-            serializer.save()
-
-            image_name = serializer.data.get("photo")
-            print("Image Name:", image_name)
-
-            longitude = serializer.data.get("longitude")
-            latitude = serializer.data.get("lattitude")
-            print("Longitude:", longitude)
-            # incident_instance = Incident.objects.get(longitude=longitude)
-            # incident_id = incident_instance.id
-
-            # print(incident_id)
+        # Validate serializer
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             
+        # Process zone
+        lat = request.data.get("lattitude", "")
+        lon = request.data.get("longitude", "")
+        zone_name = request.data.get("zone")
+        
+        if not zone_name:
+            return Response({"zone": ["This field is required."]}, status=status.HTTP_400_BAD_REQUEST)
+            
+        zone, created = Zone.objects.get_or_create(name=zone_name, defaults={'lattitude': lat, 'longitude': lon})
+        
+        serializer.save()
 
-          
+        image_name = serializer.data.get("photo")
+        print("Image Name:", image_name)
 
-            if "user_id" in request.data:
+        longitude = serializer.data.get("longitude")
+        latitude = serializer.data.get("lattitude")
+        print("Longitude:", longitude)
+
+        # Points system from dev version
+        if "user_id" in request.data:
+            try:
                 user = User.objects.get(id=request.data["user_id"])
                 user.points += 1
                 user.save()
+            except User.DoesNotExist:
+                print(f"Warning: No user found with ID {request.data['user_id']}")
+            except ValueError:
+                print(f"Warning: Invalid user ID format: {request.data['user_id']}")
 
-            if "video" in request.data:
+        # Video conversion
+        if "video" in request.data and request.data["video"]:
+            try:
                 subprocess.check_call(['python', f"{settings.BASE_DIR}" + '/convertvideo.py'])
+            except subprocess.CalledProcessError as e:
+                print(f"Warning: Video conversion failed: {e}")
+            except Exception as e:
+                print(f"Warning: Unexpected error during video conversion: {e}")
 
-            return Response(serializer.data, status=201)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-        return Response(serializer.errors, status=400)
 
 @extend_schema(
     description="Endpoint allowing retrieval an incident resolved.",
@@ -510,7 +527,6 @@ class EvenementAPIListView(generics.CreateAPIView):
     permission_classes = ()
     queryset = Evenement.objects.all()
     serializer_class = EvenementSerializer
-
     
     def get(self, request, format=None):
         items = Evenement.objects.order_by('pk')
@@ -589,7 +605,7 @@ class ContactAPIListView(generics.CreateAPIView):
         if serializer.is_valid():
             serializer.save()
 
-            subject, from_email = '[MAP ACTION] - Nouveau Message', settings.EMAIL_HOST_USER
+            subject, from_email, to = '[MAP ACTION] - Nouveau Message', settings.EMAIL_HOST_USER, request.data["email"]
             html_content = render_to_string('mail_new_message.html')
             text_content = strip_tags(html_content)
             msg = EmailMultiAlternatives(subject, text_content, from_email, list(admins))
@@ -745,7 +761,7 @@ class RapportAPIListView(generics.CreateAPIView):
             admins = User.objects.filter(user_type="admin").values_list('email', flat=True)
             # print("admins: ",list(admins))
             incident = Incident.objects.get(id=request.data['incident'])
-            subject, from_email = '[MAP ACTION] - Nouvelle commande de rapport', settings.EMAIL_HOST_USER
+            subject, from_email, to = '[MAP ACTION] - Nouvelle commande de rapport', settings.EMAIL_HOST_USER, user.email
             html_content = render_to_string('mail_rapport_admin.html',
                                             {'details': incident.title})  # render with dynamic value#
             text_content = strip_tags(html_content)  # Strip the html tag. So people can see the pure text at least.
@@ -860,7 +876,6 @@ class ParticipateAPIView(generics.CreateAPIView):
             return Response(status=404)
         item.delete()
         return Response(status=204)
-
 
 @extend_schema(
     description="Endpoint allowing retrieval and creating of participation.",
@@ -1326,38 +1341,45 @@ class IncidentByWeekByZoneAPIView(generics.CreateAPIView):
     request=CategorySerializer,
     responses={200: CategorySerializer, 404: "category not found"},  
 )
-class CategoryAPIView(generics.CreateAPIView):
-    permission_classes = (
-    )
+class CategoryAPIView(APIView):
+    permission_classes = ()
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
 
     def get(self, request, id, format=None):
         try:
-            item = Category.objects.get(pk=id)
-            serializer = CategorySerializer(item)
+            category = Category.objects.get(id=id)
+            serializer = CategorySerializer(category)
             return Response(serializer.data)
         except Category.DoesNotExist:
-            return Response(status=404)
+            return Response(status=status.HTTP_404_NOT_FOUND)
 
     def put(self, request, id, format=None):
         try:
-            item = Category.objects.get(pk=id)
+            category = Category.objects.get(id=id)
+            serializer = CategorySerializer(category, data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except Category.DoesNotExist:
-            return Response(status=404)
-        serializer = CategorySerializer(item, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=400)
+            return Response(status=status.HTTP_404_NOT_FOUND)
 
     def delete(self, request, id, format=None):
         try:
-            item = Category.objects.get(pk=id)
+            category = Category.objects.get(id=id)
+            
+            # Check for associated incidents
+            if Incident.objects.filter(category_id=category).exists():
+                return Response(
+                    {"error": "Cannot delete category with associated incidents"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            category.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
         except Category.DoesNotExist:
-            return Response(status=404)
-        item.delete()
-        return Response(status=204)
+            return Response(status=status.HTTP_404_NOT_FOUND)
 
 @extend_schema(
     description="Endpoint allowing retrieval and creating of category.",
@@ -1444,13 +1466,11 @@ class IndicateurAPIListView(generics.CreateAPIView):
         return Response(serializer.errors, status=400)
 
 @extend_schema(
-    description="Endpoint allowing changing password",
+    description="Endpoint for changing password",
     responses={200: ChangePasswordSerializer, 400: "bad request"}
 )
 class ChangePasswordView(generics.UpdateAPIView):
-    """
-    An endpoint for changing password.
-    """
+    """ use postman to test give 4 fields new_password  new_password_confirm email code post methode"""
     serializer_class = ChangePasswordSerializer
     model = User
     permission_classes = (IsAuthenticated,)
@@ -1645,6 +1665,16 @@ class PasswordResetView(generics.CreateAPIView):
                     "status": "failure",
                     "message": "not such item",
                     "error": "not such item"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Check if the reset code has expired
+            timeout_hours = getattr(settings, 'PASSWORD_RESET_TIMEOUT_HOURS', 1)
+            expiry_time = passReset.date_created + timedelta(hours=timeout_hours)
+            if timezone.now() > expiry_time:
+                return Response({
+                    "status": "failure",
+                    "message": "reset code has expired",
+                    "error": "expired code"
                 }, status=status.HTTP_400_BAD_REQUEST)
 
             user_.set_password(request.data['new_password'])
@@ -1962,7 +1992,9 @@ def send_sms(phone_number, otp_code):
     account_sid = os.environ['TWILIO_ACCOUNT_SID']
     auth_token = os.environ['TWILIO_AUTH_TOKEN']
     twilio_phone = os.environ['TWILIO_PHONE_NUMBER']
+
     client = Client(account_sid, auth_token)
+
     message_body = f"Votre code de vérification OTP est : {otp_code}"
     message = client.messages.create(
         body=message_body,
@@ -1987,19 +2019,11 @@ class CollaborationView(generics.CreateAPIView, generics.ListAPIView):
         )
 
     def post(self, request, *args, **kwargs):
-        try:
-            serializer = CollaborationSerializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            collaboration = serializer.save()
-            
-            # Log the success of collaboration creation
-            logger.info(f"Collaboration created with ID: {collaboration.id}")
-            
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            collaboration = serializer.save(status='pending')
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-        except ValidationError as e:
-            logger.error(f"Validation error: {serializer.errors}")
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class AcceptCollaborationView(APIView):
     permission_classes = ()
@@ -2007,35 +2031,48 @@ class AcceptCollaborationView(APIView):
     def post(self, request, *args, **kwargs):
         try:
             collaboration_id = request.data.get('collaboration_id')
+            if not collaboration_id:
+                return Response(
+                    {"error": "collaboration_id is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
             collaboration = Collaboration.objects.get(id=collaboration_id)
-            requesting_user = collaboration.user
+            
+            # Check if user is authorized
+            if request.user.id != collaboration.user.id:
+                return Response(
+                    {"error": "Vous n'êtes pas autorisé à accepter cette collaboration"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check if already accepted
+            if collaboration.status == 'accepted':
+                return Response(
+                    {"error": "Cette collaboration a déjà été acceptée"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if expired
+            if collaboration.end_date and collaboration.end_date <= timezone.now().date():
+                return Response(
+                    {"error": "Cette collaboration a expiré"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
             collaboration.status = 'accepted'
             collaboration.save()
             
-            send_email.delay(  
-                subject='Demande de collaboration acceptée',
-                template_name='emails/collaboration_accept.html',  
-                context={
-                    'incident_id': collaboration.incident.id,
-                },
-                to_email=requesting_user.email,
+            return Response(
+                {"message": "Collaboration acceptée avec succès"},
+                status=status.HTTP_200_OK
             )
             
-            notification_message = f'Votre demande de collaboration sur l\'incident {collaboration.incident.id} a été acceptée.'
-            notification = Notification.objects.create(
-                user=requesting_user,
-                message=notification_message,
-                colaboration=collaboration
-            )
-            notification.delete()
-            return Response({"message": "Collaboration acceptée et notification envoyée"}, status=status.HTTP_200_OK)
-        
         except Collaboration.DoesNotExist:
-            return Response({"error": "Collaboration non trouvée"}, status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
+            return Response(
+                {"error": "Collaboration non trouvée"},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 @extend_schema(
     description="Endpoint for search incidents",
@@ -2319,7 +2356,6 @@ class DeclineCollaborationView(APIView):
                 message=notification_message,
                 colaboration=collaboration
             )
-            
             notification.delete()
 
             return Response({"message": "Collaboration déclinée et notification supprimée."}, status=status.HTTP_200_OK)
@@ -2327,7 +2363,6 @@ class DeclineCollaborationView(APIView):
         except Collaboration.DoesNotExist:
             return Response({"error": "Collaboration non trouvée"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
-            logger.error(f"Erreur lors de la déclinaison de la collaboration: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -2419,6 +2454,56 @@ class VerifyOTPView(APIView):
             return Response({"message": "Utilisateur non trouvé"}, status=status.HTTP_404_NOT_FOUND)
 
 
+class AcceptCollaborationView(APIView):
+    permission_classes = ()
+    
+    def post(self, request, *args, **kwargs):
+        try:
+            collaboration_id = request.data.get('collaboration_id')
+            if not collaboration_id:
+                return Response(
+                    {"error": "collaboration_id is required"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            collaboration = Collaboration.objects.get(id=collaboration_id)
+            
+            # Check if user is authorized
+            if request.user.id != collaboration.user.id:
+                return Response(
+                    {"error": "Vous n'êtes pas autorisé à accepter cette collaboration"},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # Check if already accepted
+            if collaboration.status == 'accepted':
+                return Response(
+                    {"error": "Cette collaboration a déjà été acceptée"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Check if expired
+            if collaboration.end_date and collaboration.end_date <= timezone.now().date():
+                return Response(
+                    {"error": "Cette collaboration a expiré"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            collaboration.status = 'accepted'
+            collaboration.save()
+            
+            return Response(
+                {"message": "Collaboration acceptée avec succès"},
+                status=status.HTTP_200_OK
+            )
+            
+        except Collaboration.DoesNotExist:
+            return Response(
+                {"error": "Collaboration non trouvée"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+
 class DiscussionMessageView(generics.ListCreateAPIView):
     serializer_class = DiscussionMessageSerializer
     permission_classes = [IsAuthenticated]
@@ -2483,3 +2568,4 @@ class RedirectToAppView(View):
         </html>
         """
         return HttpResponse(html)
+

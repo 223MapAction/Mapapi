@@ -1,5 +1,6 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from Mapapi.models import Incident, Zone, Evenement, Contact, Communaute, Category
 from Mapapi.serializer import (
     IncidentSerializer, ZoneSerializer, EvenementSerializer,
@@ -73,7 +74,7 @@ class EvenementSerializerTest(TestCase):
         self.event_data = {
             'title': 'Test Event',
             'description': 'Test Description',
-            'date': '2023-05-01',
+            'date': timezone.make_aware(timezone.datetime(2023, 5, 1)),
             'user_id': self.user,
             'zone': 'Test Zone',
             'lieu': 'Test Location',

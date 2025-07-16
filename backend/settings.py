@@ -3,26 +3,29 @@ import os
 import sys
 from pathlib import Path
 from datetime import timedelta
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 import ast
 
 
-load_dotenv()
+# load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-4k+g*9g=6h&_8@s05ps!f)n!ivs4=yujv+rx(obnku=eyz3&jb'
+SECRET_KEY = os.environ.get("SECRET_KEY")
 
 # À changer quand on le mettra en production
 DEBUG = True
 
 
-ALLOWED_HOSTS = ast.literal_eval(os.environ.get("ALLOWED_HOSTS"))
+# Split the comma-separated ALLOWED_HOSTS environment variable into a list
+allowed_hosts_value = os.environ.get("ALLOWED_HOSTS", "localhost")
+ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_value.split(",")]
 
-
+# Add CSRF trusted origins for HTTPS
+CSRF_TRUSTED_ORIGINS = [f"https://{host.strip()}" for host in allowed_hosts_value.split(",")]
 
 
 # Application definition
@@ -144,13 +147,15 @@ ACCOUNT_EMAIL_REQUIRED = True
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'HOST': os.environ.get("DB_HOST", "localhost"),
-        'NAME': os.environ.get("POSTGRES_DB", "mapaction"),
-        'USER': os.environ.get("POSTGRES_USER", "root"),
-        'PASSWORD': os.environ.get("POSTGRES_PASSWORD", "postges"),
-        'PORT': os.environ.get("PORT", "5432"),
+        'HOST': os.environ.get("DB_HOST"),
+        'NAME': os.environ.get("POSTGRES_DB"),
+        'USER': os.environ.get("POSTGRES_USER"),
+        'PASSWORD': os.environ.get("POSTGRES_PASSWORD"),
+        'PORT': os.environ.get("PORT"),
+        'OPTIONS': {
+            'sslmode': 'require',
+        },
     },
-   
 }
 
 
@@ -283,13 +288,20 @@ LOGGING = {
     },
 }
 
+print("DEBUG ENV CHECK - SECRET_KEY:", os.environ.get("SECRET_KEY"))
+print("DEBUG ENV CHECK - DB_HOST:", os.environ.get("DB_HOST"))
+print("DEBUG ENV CHECK - port:", os.environ.get("PORT"))
+print("DEBUG ENV CHECK - user:", os.environ.get("POSTGRES_USER"))
 
 
 AUTH_USER_MODEL = 'Mapapi.User'
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'mail.map-action.com'
+EMAIL_HOST = os.environ.get("EMAIL_HOST")
 EMAIL_USE_TLS = True  
 EMAIL_USE_SSL = False 
 EMAIL_PORT = 2525
-EMAIL_HOST_USER = 'contact@map-action.com'
-EMAIL_HOST_PASSWORD = 'Equipes55'
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD")
+
+# Supabase storage configuration
+USE_SUPABASE_STORAGE = os.environ.get('USE_SUPABASE_STORAGE', 'False').lower() in ('true', '1', 't')

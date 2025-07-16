@@ -12,6 +12,9 @@ from .Send_mails import send_email
 from django.conf import settings
 from django.utils.html import format_html
 
+# Import the custom storage classes
+from backend.supabase_storage import ImageStorage, VideoStorage, VoiceStorage
+
 ADMIN = 'admin'
 VISITOR = 'visitor'
 CITIZEN = 'citizen'
@@ -81,17 +84,33 @@ class UserManager(BaseUserManager):
         return user
 
     def create_user(self, email, password=None, **extra_fields):
+        """
+        Creates and saves a regular user with the given email and password.
+        """
         extra_fields.setdefault('is_superuser', False)
-        return self._create_user(email, password, **extra_fields)
+        extra_fields.setdefault('is_staff', False)
+        
+        if not email:
+            raise ValueError('The Email field must be set')
+        email = self.normalize_email(email)
+        user = self.model(email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
 
     def create_superuser(self, email, password, **extra_fields):
+        """
+        Creates and saves a superuser with the given email and password.
+        """
         extra_fields.setdefault('is_superuser', True)
         extra_fields.setdefault('is_staff', True)
 
         if extra_fields.get('is_superuser') is not True:
             raise ValueError('Superuser must have is_superuser=True.')
+        if extra_fields.get('is_staff') is not True:
+            raise ValueError('Superuser must have is_staff=True.')
 
-        return self._create_user(email, password, **extra_fields)
+        return self.create_user(email, password, **extra_fields)
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -117,7 +136,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     date_joined = models.DateTimeField(_('date joined'), auto_now_add=True)
     is_active = models.BooleanField(_('active'), default=True)
     is_staff = models.BooleanField(default=False)
-    avatar = models.ImageField(default="avatars/default.png", upload_to='avatars/', null=True, blank=True)
+    avatar = models.ImageField(default="avatars/default.png", upload_to='avatars/', 
+                        storage=ImageStorage(),
+                        null=True, blank=True)
     password_reset_count = models.DecimalField(max_digits=10, decimal_places=0, null=True, blank=True, default=0)
     address = models.CharField(_('adress'), max_length=255, blank=True, null=True)
     user_type = models.CharField(
@@ -194,9 +215,15 @@ class Incident(models.Model):
     zone = models.CharField(max_length=250, blank=False,
                             null=False)
     description = models.TextField(max_length=500, blank=True, null=True)
-    photo = models.ImageField(upload_to='uploads/',null=True, blank=True)
-    video = models.FileField(upload_to='uploads/',blank=True, null=True)
-    audio = models.FileField(upload_to='uploads/',blank=True, null=True)
+    photo = models.ImageField(upload_to='incidents/', 
+                        storage=ImageStorage(), 
+                        null=True, blank=True)
+    video = models.FileField(upload_to='incidents/', 
+                        storage=VideoStorage(), 
+                        blank=True, null=True)
+    audio = models.FileField(upload_to='incidents/', 
+                        storage=VoiceStorage(), 
+                        blank=True, null=True)
     user_id = models.ForeignKey('User', db_column='user_incid_id', related_name='user_incident',
                                 on_delete=models.CASCADE, null=True)
     lattitude = models.CharField(max_length=250, blank=True,
@@ -225,12 +252,18 @@ class Evenement(models.Model):
     zone = models.CharField(max_length=255, blank=False,
                             null=False)
     description = models.TextField(max_length=500, blank=True, null=True)
-    photo = models.ImageField(null=True, blank=True)
+    photo = models.ImageField(upload_to='events/',
+                        storage=ImageStorage(),
+                        null=True, blank=True)
     date = models.DateTimeField(null=True)
     lieu = models.CharField(max_length=250, blank=False,
                             null=False)
-    video = models.FileField(blank=True, null=True)
-    audio = models.FileField(blank=True, null=True)
+    video = models.FileField(upload_to='events/',
+                        storage=VideoStorage(),
+                        blank=True, null=True)
+    audio = models.FileField(upload_to='events/',
+                        storage=VoiceStorage(),
+                        blank=True, null=True)
     user_id = models.ForeignKey('User', db_column='user_event_id', related_name='user_event', on_delete=models.CASCADE,
                                 null=True)
     latitude = models.CharField(max_length=1000, blank=True, null=True)
@@ -280,7 +313,9 @@ class Rapport(models.Model):
         max_length=15, choices=ETAT_RAPPORT, blank=False, null=False, default="new")
     incidents = models.ManyToManyField('Incident', blank=True)
     disponible = models.BooleanField(_('active'), default=False)
-    file = models.FileField(blank=True, null=True)
+    file = models.FileField(upload_to='reports/',
+                        storage=ImageStorage(),
+                        blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -303,7 +338,9 @@ class Zone(models.Model):
                                  null=True)
     longitude = models.CharField(max_length=250, blank=True,
                                  null=True)
-    photo = models.ImageField(null=True, blank=True)
+    photo = models.ImageField(upload_to='zones/',
+                        storage=ImageStorage(),
+                        null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

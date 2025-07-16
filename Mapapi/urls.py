@@ -3,7 +3,7 @@ from .views import *
 from django.contrib.auth.views import (
     LoginView, LogoutView,
     PasswordChangeView, PasswordChangeDoneView,
-    PasswordResetView,PasswordResetDoneView, PasswordResetConfirmView,PasswordResetCompleteView,
+    PasswordResetView as DjangoPasswordResetView,PasswordResetDoneView, PasswordResetConfirmView,PasswordResetCompleteView,
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -11,7 +11,7 @@ from rest_framework_simplejwt.views import (
     TokenVerifyView,
 )
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
-
+from .views import PasswordResetView
 
 urlpatterns = [
     # URL PATTERNS for the documentation
@@ -72,13 +72,13 @@ urlpatterns = [
     path('message/<int:id>', MessageAPIView.as_view(), name='message'),
     path('message/', MessageAPIListView.as_view(), name='message_list'),
     path('message/', MessageByComAPIView.as_view(), name='message_com'),
-    path('message_user/', MessageByUserAPIView.as_view(), name='message_user'),
+    path('message_user/<int:id>/', MessageByUserAPIView.as_view(), name='message_user'),
     path('message/<zone>', MessageByZoneAPIView.as_view(), name='message_zone'),
     path('response_msg/', ResponseMessageAPIListView.as_view(), name='response_msg'),
     path('response_msg/<int:id>', ResponseMessageAPIView.as_view(), name='response_msg'),
     # URL for views category
-    path('category/<int:id>', CategoryAPIView.as_view(), name='category'),
-    path('category/', CategoryAPIListView.as_view(), name='message_list'),
+    path('category/<int:id>', CategoryAPIView.as_view(), name='category-detail'),
+    path('category/', CategoryAPIListView.as_view(), name='category-list'),
     # URL for views indicator
     path('indicator/', IndicateurAPIListView.as_view(), name='indicator'),
     path('indicator/<int:id>', IndicateurAPIView.as_view(), name='indicator'),
@@ -98,9 +98,10 @@ urlpatterns = [
     # OTP URL
     path('verify_otp/', PhoneOTPView.as_view(), name="verify_otp"),
     # Collaboration URL
-    path('collaboration/decline/', DeclineCollaborationView.as_view(), name='decline-collaboration'),
+    path('collaboration/', CollaborationView.as_view(), name='collaboration'),
+    path('accept-collaboration/', AcceptCollaborationView.as_view(), name='accept-collaboration'),
+    path('decline/', DeclineCollaborationView.as_view(), name='decline-collaboration'),
     path('collaborations/accept/', AcceptCollaborationView.as_view(), name='accept-collaboration'),
-    path('collaboration/', CollaborationView.as_view(), name="collaboration"),
     path('collaboration/<int:collaboration_id>/<str:action>/', HandleCollaborationRequestView.as_view(), name="handle_collaboration_request"),
     path('discussion/<int:incident_id>/', DiscussionMessageView.as_view(), name='discussion'),
 

@@ -4,6 +4,7 @@ from rest_framework import serializers
 from django.contrib.auth import authenticate
 from rest_framework.serializers import ModelSerializer
 from django.contrib.auth.hashers import make_password
+from django.utils import timezone
 
 
 # class UserSerializer(ModelSerializer):
@@ -273,10 +274,22 @@ class PhoneOTPSerializer(serializers.ModelSerializer):
         model = PhoneOTP
         fields = ['phone_number']
 
-class CollaborationSerializer(serializers.ModelSerializer):
+class CollaborationSerializer(ModelSerializer):
     class Meta:
         model = Collaboration
         fields = '__all__'
+        read_only_fields = ('status',)
+
+    def validate(self, data):
+        # Check for existing collaboration
+        if self.Meta.model.objects.filter(incident=data['incident'], user=data['user']).exists():
+            raise serializers.ValidationError("Une collaboration existe déjà pour cet utilisateur sur cet incident")
+        
+        # Validate end date
+        if data.get('end_date') and data['end_date'] <= timezone.now().date():
+            raise serializers.ValidationError("La date de fin doit être dans le futur")
+        
+        return data
 
 class ColaborationSerializer(serializers.ModelSerializer):
     class Meta:
