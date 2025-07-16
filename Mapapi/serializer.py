@@ -7,20 +7,20 @@ from django.contrib.auth.hashers import make_password
 from django.utils import timezone
 
 
-class UserSerializer(ModelSerializer):
-    class Meta:
-        model = User
-        exclude = (
-            'user_permissions', 'is_superuser', 'is_active', 'is_staff')
+# class UserSerializer(ModelSerializer):
+#     class Meta:
+#         model = User
+#         exclude = (
+#             'user_permissions', 'is_superuser', 'is_active', 'is_staff')
 
-    def create(self, validated_data):
-        zones = validated_data.pop('zones', None)
-        user = self.Meta.model(**validated_data)
-        user.set_password(validated_data['password'])
-        user.save()
-        if zones:
-            user.zones.set(zones)
-        return user
+#     def create(self, validated_data):
+#         zones = validated_data.pop('zones', None)
+#         user = self.Meta.model(**validated_data)
+#         user.set_password(validated_data['password'])
+#         user.save()
+#         if zones:
+#             user.zones.set(zones)
+#         return user
 
 
 class UserRegisterSerializer(serializers.ModelSerializer):
@@ -40,6 +40,36 @@ class UserRegisterSerializer(serializers.ModelSerializer):
         )
         user.set_password(validated_data['password'])
         user.save()
+        return user
+
+ 
+class UserSerializer(ModelSerializer):
+    incident_preferences = serializers.ListField(
+        child=serializers.CharField(),
+        write_only=True,
+        required=False
+    )
+
+    class Meta:
+        model = User
+        exclude = ('user_permissions', 'is_superuser', 'is_active', 'is_staff')
+
+    def create(self, validated_data):
+        zones = validated_data.pop('zones', None)
+        incident_preferences = validated_data.pop('incident_preferences', [])
+
+        user = self.Meta.model(**validated_data)
+        user.set_password(validated_data['password'])
+        user.save()
+
+        if zones:
+            user.zones.set(zones)
+
+
+        if user.user_type == "elu" and incident_preferences:
+            for incident_type in incident_preferences:
+                OrganisationTag.objects.create(user=user, incident_type=incident_type)
+
         return user
 
 
@@ -287,3 +317,14 @@ class UserActionSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserAction
         fields = '__all__' 
+
+
+class DiscussionMessageSerializer(serializers.ModelSerializer):
+    sender = UserSerializer(read_only=True)
+    recipient = UserSerializer(read_only=True)
+    class Meta:
+        model = DiscussionMessage
+        fields = ['id', 'incident', 'collaboration', 'sender', 'message', 'created_at','recipient']
+        read_only_fields = ('sender', 'incident', 'collaboration','recipient')
+
+

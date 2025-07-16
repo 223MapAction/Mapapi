@@ -186,7 +186,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.save()
 
     def send_verification_email(self):
-        verification_link = f"mapactionapp://verify-email/{self.verification_token}"
+        verification_link = f"https://api.map-action.com/MapApi/web_verify-email/{self.verification_token}"
         context = {"verification_link": verification_link}
         subject = "Vérification de votre compte"
         template_name = "emails/verification_email.html"
@@ -427,6 +427,8 @@ class Collaboration(models.Model):
     other_option = models.CharField(max_length=255, blank=True, null=True) 
     status = models.CharField(max_length=20, default='pending')
     
+    class Meta:
+        unique_together = (("incident", "user"),)
     def __str__(self):
         return f"Collaboration on {self.incident} by {self.user}"
     
@@ -483,3 +485,18 @@ class UserAction(models.Model):
 
     def __str__(self):
         return self.action
+    
+class DiscussionMessage(models.Model):
+    incident = models.ForeignKey('Incident', on_delete=models.CASCADE)
+    collaboration = models.ForeignKey(Collaboration, on_delete=models.CASCADE)
+    sender = models.ForeignKey(User, on_delete=models.CASCADE)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="received_messages", null=True, blank=True)
+    
+    def __str__(self):
+        return f"Message de {self.sender} le {self.created_at}"
+
+class OrganisationTag(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='incident_preferences')
+    incident_type = models.CharField(max_length=255)  
