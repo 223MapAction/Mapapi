@@ -78,10 +78,10 @@ cd Mapapi
 
 #### Build and run the containers
 
--   Use Docker Compose to build and run the services defined in the `_cd_pipeline.yml` file.
+-   Use Docker Compose to build and run the services defined in the `docker-compose.local.yml` file.
 
 ```bash
-docker-compose -f _cd_pipeline.yml up --build
+docker-compose -f docker-compose.local.yml up --build
 ```
 
 -   This command will build the Docker images and start the containers for the application, including the database, API server, Redis, and other services.
@@ -95,7 +95,7 @@ docker-compose -f _cd_pipeline.yml up --build
 -   To stop the running services, use:
 
 ```bash
-docker-compose -f _cd_pipeline.yml down
+docker-compose -f docker-compose.local.yml down
 ```
 
 This setup leverages Docker to manage dependencies and services, ensuring a consistent environment across different systems.
