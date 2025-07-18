@@ -16,7 +16,7 @@ from .views import PasswordResetView
 urlpatterns = [
     path('tenant-config/', TenantConfigView.as_view(), name='tenant_config'),
     path('organisations/', OrganisationViewSet.as_view(), name='organisation-list-create'),
-path('organisations/<int:pk>', OrganisationViewSet.as_view(), name='organisation-detail'),
+    path('organisations/<int:pk>', OrganisationViewSet.as_view(), name='organisation-detail'),
     # URL PATTERNS for the documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     # Optional UI:
