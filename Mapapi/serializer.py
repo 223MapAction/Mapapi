@@ -1,5 +1,11 @@
 from rest_framework import serializers, generics, permissions, status
 from .models import *
+
+class OrganisationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Organisation
+        fields = '__all__'
+
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from rest_framework.serializers import ModelSerializer

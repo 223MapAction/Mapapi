@@ -48,6 +48,20 @@ ETAT_RAPPORT = (
 )
 
 
+# Modèle d'organisation pour gérer les organisations liées aux utilisateurs
+class Organisation(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+    is_premium = models.BooleanField(default=False)
+    subdomain = models.CharField(max_length=255, unique=True)  # ex: wetlands
+    logo_url = models.URLField(null=True, blank=True)
+    primary_color = models.CharField(max_length=7, default="#4CAF50")  # hex
+    secondary_color = models.CharField(max_length=7, default="#8BC34A")
+    background_color = models.CharField(max_length=7, default="#F0F0F0")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
 # Creation du model User pour les utilisateurs de l'application pour securiser l'entree des commandes
 
 class UserManager(BaseUserManager):
@@ -146,8 +160,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     community = models.ForeignKey('Communaute', db_column='user_communaute_id', related_name='user_communaute',
                                    on_delete=models.CASCADE, null=True, blank=True)
     provider = models.CharField(_('provider'), max_length=255, blank=True, null=True)
-    organisation = models.CharField(max_length=255, blank=True,
-                                    null=True)
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="users"
+    )
     points = models.IntegerField(null=True, blank=True, default=0)
     zones = models.ManyToManyField('Zone', blank=True)
     verification_token = models.UUIDField(default=uuid.uuid4, editable=False, null=True, blank=True)
