@@ -31,7 +31,7 @@ jobs:
 
   deploy:
     needs: cleanup
-    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
