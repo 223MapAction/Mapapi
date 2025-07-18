@@ -12,6 +12,9 @@ from .Send_mails import send_email
 from django.conf import settings
 from django.utils.html import format_html
 
+# Import the custom storage classes
+from backend.supabase_storage import ImageStorage, VideoStorage, VoiceStorage
+
 ADMIN = 'admin'
 VISITOR = 'visitor'
 CITIZEN = 'citizen'
@@ -44,6 +47,20 @@ ETAT_RAPPORT = (
     ("canceled", "canceled")
 )
 
+
+# Modèle d'organisation pour gérer les organisations liées aux utilisateurs
+class Organisation(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+    is_premium = models.BooleanField(default=False)
+    subdomain = models.CharField(max_length=255, unique=True)  # ex: wetlands
+    logo_url = models.URLField(null=True, blank=True)
+    primary_color = models.CharField(max_length=7, default="#4CAF50")  # hex
+    secondary_color = models.CharField(max_length=7, default="#8BC34A")
+    background_color = models.CharField(max_length=7, default="#F0F0F0")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
 
 # Creation du model User pour les utilisateurs de l'application pour securiser l'entree des commandes
 
@@ -133,7 +150,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     date_joined = models.DateTimeField(_('date joined'), auto_now_add=True)
     is_active = models.BooleanField(_('active'), default=True)
     is_staff = models.BooleanField(default=False)
-    avatar = models.ImageField(default="avatars/default.png", upload_to='avatars/', null=True, blank=True)
+    avatar = models.ImageField(default="avatars/default.png", upload_to='avatars/', 
+                        storage=ImageStorage(),
+                        null=True, blank=True)
     password_reset_count = models.DecimalField(max_digits=10, decimal_places=0, null=True, blank=True, default=0)
     address = models.CharField(_('adress'), max_length=255, blank=True, null=True)
     user_type = models.CharField(
@@ -141,8 +160,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     community = models.ForeignKey('Communaute', db_column='user_communaute_id', related_name='user_communaute',
                                    on_delete=models.CASCADE, null=True, blank=True)
     provider = models.CharField(_('provider'), max_length=255, blank=True, null=True)
-    organisation = models.CharField(max_length=255, blank=True,
-                                    null=True)
+    organisation = models.ForeignKey(
+        Organisation,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="users"
+    )
     points = models.IntegerField(null=True, blank=True, default=0)
     zones = models.ManyToManyField('Zone', blank=True)
     verification_token = models.UUIDField(default=uuid.uuid4, editable=False, null=True, blank=True)
@@ -181,7 +205,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.save()
 
     def send_verification_email(self):
-        verification_link = f"com.uwaish.MapActionApp://verify-email/{self.verification_token}"
+        verification_link = f"https://api.map-action.com/MapApi/web_verify-email/{self.verification_token}"
         context = {"verification_link": verification_link}
         subject = "Vérification de votre compte"
         template_name = "emails/verification_email.html"
@@ -210,9 +234,15 @@ class Incident(models.Model):
     zone = models.CharField(max_length=250, blank=False,
                             null=False)
     description = models.TextField(max_length=500, blank=True, null=True)
-    photo = models.ImageField(upload_to='uploads/',null=True, blank=True)
-    video = models.FileField(upload_to='uploads/',blank=True, null=True)
-    audio = models.FileField(upload_to='uploads/',blank=True, null=True)
+    photo = models.ImageField(upload_to='incidents/', 
+                        storage=ImageStorage(), 
+                        null=True, blank=True)
+    video = models.FileField(upload_to='incidents/', 
+                        storage=VideoStorage(), 
+                        blank=True, null=True)
+    audio = models.FileField(upload_to='incidents/', 
+                        storage=VoiceStorage(), 
+                        blank=True, null=True)
     user_id = models.ForeignKey('User', db_column='user_incid_id', related_name='user_incident',
                                 on_delete=models.CASCADE, null=True)
     lattitude = models.CharField(max_length=250, blank=True,
@@ -241,12 +271,18 @@ class Evenement(models.Model):
     zone = models.CharField(max_length=255, blank=False,
                             null=False)
     description = models.TextField(max_length=500, blank=True, null=True)
-    photo = models.ImageField(null=True, blank=True)
+    photo = models.ImageField(upload_to='events/',
+                        storage=ImageStorage(),
+                        null=True, blank=True)
     date = models.DateTimeField(null=True)
     lieu = models.CharField(max_length=250, blank=False,
                             null=False)
-    video = models.FileField(blank=True, null=True)
-    audio = models.FileField(blank=True, null=True)
+    video = models.FileField(upload_to='events/',
+                        storage=VideoStorage(),
+                        blank=True, null=True)
+    audio = models.FileField(upload_to='events/',
+                        storage=VoiceStorage(),
+                        blank=True, null=True)
     user_id = models.ForeignKey('User', db_column='user_event_id', related_name='user_event', on_delete=models.CASCADE,
                                 null=True)
     latitude = models.CharField(max_length=1000, blank=True, null=True)
@@ -296,7 +332,9 @@ class Rapport(models.Model):
         max_length=15, choices=ETAT_RAPPORT, blank=False, null=False, default="new")
     incidents = models.ManyToManyField('Incident', blank=True)
     disponible = models.BooleanField(_('active'), default=False)
-    file = models.FileField(blank=True, null=True)
+    file = models.FileField(upload_to='reports/',
+                        storage=ImageStorage(),
+                        blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -319,7 +357,9 @@ class Zone(models.Model):
                                  null=True)
     longitude = models.CharField(max_length=250, blank=True,
                                  null=True)
-    photo = models.ImageField(null=True, blank=True)
+    photo = models.ImageField(upload_to='zones/',
+                        storage=ImageStorage(),
+                        null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -406,6 +446,8 @@ class Collaboration(models.Model):
     other_option = models.CharField(max_length=255, blank=True, null=True) 
     status = models.CharField(max_length=20, default='pending')
     
+    class Meta:
+        unique_together = (("incident", "user"),)
     def __str__(self):
         return f"Collaboration on {self.incident} by {self.user}"
     
@@ -462,3 +504,18 @@ class UserAction(models.Model):
 
     def __str__(self):
         return self.action
+    
+class DiscussionMessage(models.Model):
+    incident = models.ForeignKey('Incident', on_delete=models.CASCADE)
+    collaboration = models.ForeignKey(Collaboration, on_delete=models.CASCADE)
+    sender = models.ForeignKey(User, on_delete=models.CASCADE)
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="received_messages", null=True, blank=True)
+    
+    def __str__(self):
+        return f"Message de {self.sender} le {self.created_at}"
+
+class OrganisationTag(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='incident_preferences')
+    incident_type = models.CharField(max_length=255)  

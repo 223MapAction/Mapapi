@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from .serializer import *
 from django.middleware.csrf import get_token
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from rest_framework.pagination import PageNumberPagination
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -22,6 +22,7 @@ from django.contrib.auth.views import PasswordChangeView
 from django.conf import settings
 from django.db import IntegrityError
 from backend.settings import *
+from django.views import View
 import json
 import datetime
 from datetime import timedelta
@@ -45,9 +46,51 @@ import time
 import logging
 from django.utils import timezone
 from datetime import timedelta
+
 from django.utils.dateparse import parse_date
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
+import random
+import string
+
+def get_random(length=6):
+    return ''.join(random.choices(string.digits, k=length))
+
 
 logger = logging.getLogger(__name__)
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Organisation
+from rest_framework import permissions, generics
+
+class OrganisationViewSet(generics.ListCreateAPIView, generics.RetrieveUpdateDestroyAPIView):
+    queryset = Organisation.objects.all()
+    serializer_class = OrganisationSerializer
+    permission_classes = []
+
+    def get_queryset(self):
+        # Optionnel : filtrer selon les droits de l'utilisateur
+        return Organisation.objects.all()
+
+class TenantConfigView(APIView):
+    permission_classes = []  # Accessible sans authentification, car utilisé pour personnaliser le front dès le login
+
+    def get(self, request, format=None):
+        org = getattr(request, 'organisation', None)
+        if org is None:
+            return Response({'detail': 'Organisation not found for this subdomain.'}, status=status.HTTP_404_NOT_FOUND)
+        data = {
+            'name': org.name,
+            'subdomain': org.subdomain,
+            'logo_url': org.logo_url,
+            'primary_color': org.primary_color,
+            'secondary_color': org.secondary_color,
+            'background_color': org.background_color,
+            'is_premium': org.is_premium,
+        }
+        return Response(data)
 
 N = 7
 
@@ -359,11 +402,11 @@ class IncidentAPIListView(generics.CreateAPIView):
     def post(self, request, format=None):
         serializer = IncidentSerializer(data=request.data)
         
-        # First validate the serializer
+        # Validate serializer
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             
-        # Then process zone if present
+        # Process zone
         lat = request.data.get("lattitude", "")
         lon = request.data.get("longitude", "")
         zone_name = request.data.get("zone")
@@ -381,20 +424,29 @@ class IncidentAPIListView(generics.CreateAPIView):
         longitude = serializer.data.get("longitude")
         latitude = serializer.data.get("lattitude")
         print("Longitude:", longitude)
-        incident_instance = Incident.objects.get(longitude=longitude)
-        incident_id = incident_instance.id
 
-        print(incident_id)
-
+        # Points system from dev version
         if "user_id" in request.data:
-            user = User.objects.get(id=request.data["user_id"])
-            user.points += 1
-            user.save()
+            try:
+                user = User.objects.get(id=request.data["user_id"])
+                user.points += 1
+                user.save()
+            except User.DoesNotExist:
+                print(f"Warning: No user found with ID {request.data['user_id']}")
+            except ValueError:
+                print(f"Warning: Invalid user ID format: {request.data['user_id']}")
 
-        if "video" in request.data:
-            subprocess.check_call(['python', f"{settings.BASE_DIR}" + '/convertvideo.py'])
+        # Video conversion
+        if "video" in request.data and request.data["video"]:
+            try:
+                subprocess.check_call(['python', f"{settings.BASE_DIR}" + '/convertvideo.py'])
+            except subprocess.CalledProcessError as e:
+                print(f"Warning: Video conversion failed: {e}")
+            except Exception as e:
+                print(f"Warning: Unexpected error during video conversion: {e}")
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 @extend_schema(
     description="Endpoint allowing retrieval an incident resolved.",
@@ -1598,7 +1650,7 @@ class IndicateurOnIncidentByEluAPIView(generics.CreateAPIView):
             "data": listData
         }, status=status.HTTP_200_OK)
 
-
+@method_decorator(csrf_exempt, name='dispatch')
 class PasswordResetView(generics.CreateAPIView):
     """ use postman to test give 4 fields new_password  new_password_confirm email code post methode"""
     permission_classes = (
@@ -1606,9 +1658,8 @@ class PasswordResetView(generics.CreateAPIView):
     )
     queryset = User.objects.all()
     serializer_class = ResetPasswordSerializer
-
     def post(self, request, *args, **kwargs):
-
+        print("✅ post() de PasswordResetView appelée")
         if 'code' not in request.data or request.data['code'] is None:
             return Response({
                 "status": "failure",
@@ -1704,7 +1755,9 @@ class PasswordResetRequestView(generics.CreateAPIView):
                 user=user_,
                 code=code_
             )
-            subject, from_email, to = '[MAP ACTION] - Votre code de reinitialisation', settings.EMAIL_HOST_USER, user_.email
+            subject = '[MAP ACTION] - Votre code de réinitialisation'
+            from_email = 'Map Action <{}>'.format(settings.EMAIL_HOST_USER)  
+            to = user_.email
             html_content = render_to_string('mail_pwd.html', {'code': code_})  # render with dynamic value#
             text_content = strip_tags(html_content)  # Strip the html tag. So people can see the pure text at least.
             msg = EmailMultiAlternatives(subject, text_content, from_email, [to])
@@ -1988,9 +2041,15 @@ def send_sms(phone_number, otp_code):
     
 
 class CollaborationView(generics.CreateAPIView, generics.ListAPIView):
-    permission_classes = ()
+    permission_classes = [IsAuthenticated]
     queryset = Collaboration.objects.all()
     serializer_class = CollaborationSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        return Collaboration.objects.filter(
+            Q(user=user) | Q(incident__taken_by=user) 
+        )
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -2427,6 +2486,7 @@ class VerifyOTPView(APIView):
         except User.DoesNotExist:
             return Response({"message": "Utilisateur non trouvé"}, status=status.HTTP_404_NOT_FOUND)
 
+
 class AcceptCollaborationView(APIView):
     permission_classes = ()
     
@@ -2475,3 +2535,70 @@ class AcceptCollaborationView(APIView):
                 {"error": "Collaboration non trouvée"},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+
+class DiscussionMessageView(generics.ListCreateAPIView):
+    serializer_class = DiscussionMessageSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        incident_id = self.kwargs.get('incident_id')
+        user = self.request.user
+        try:
+            collaboration = Collaboration.objects.get(
+                Q(user=user) | Q(incident__taken_by=user),
+                incident__id=incident_id, 
+                status='accepted'
+            )
+        except Collaboration.DoesNotExist:
+            raise NotFound("Aucune discussion trouvée pour cet incident.")
+        
+
+        return DiscussionMessage.objects.filter(
+            incident__id=incident_id
+        ).filter(
+            Q(sender=user) | Q(recipient=user)
+        )
+    
+    def perform_create(self, serializer):
+        incident_id = self.kwargs.get('incident_id')
+        try:
+            collaboration = Collaboration.objects.get(incident__id=incident_id, user=self.request.user, status='accepted')
+            recipient = collaboration.incident.taken_by  
+        except Collaboration.DoesNotExist:
+            collaboration = Collaboration.objects.get(incident__id=incident_id, status='accepted')
+            recipient = collaboration.user
+
+        if collaboration.incident.etat == "resolved":  
+            raise ValidationError("Cet incident est résolu, la discussion est terminée.")
+
+        serializer.save(
+            sender=self.request.user,
+            incident=collaboration.incident,
+            collaboration=collaboration,
+            recipient=recipient
+        )
+
+class RedirectToAppView(View):
+    def get(self, request, token):
+        deep_link_url = f"com.uwaish.MapActionApp://verify-email/{token}"
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Redirection...</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <script type="text/javascript">
+                window.location = "{deep_link_url}";
+                setTimeout(function() {{
+                    window.location = "https://map-action.com/"; // fallback si l'app n'est pas installée
+                }}, 3000);
+            </script>
+        </head>
+        <body>
+            <p>Redirection vers l'application en cours...</p>
+        </body>
+        </html>
+        """
+        return HttpResponse(html)
+

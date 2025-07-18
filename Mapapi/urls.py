@@ -14,6 +14,9 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, Spec
 from .views import PasswordResetView
 
 urlpatterns = [
+    path('tenant-config/', TenantConfigView.as_view(), name='tenant_config'),
+    path('organisations/', OrganisationViewSet.as_view(), name='organisation-list-create'),
+path('organisations/<int:pk>', OrganisationViewSet.as_view(), name='organisation-detail'),
     # URL PATTERNS for the documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     # Optional UI:
@@ -103,6 +106,8 @@ urlpatterns = [
     path('decline/', DeclineCollaborationView.as_view(), name='decline-collaboration'),
     path('collaborations/accept/', AcceptCollaborationView.as_view(), name='accept-collaboration'),
     path('collaboration/<int:collaboration_id>/<str:action>/', HandleCollaborationRequestView.as_view(), name="handle_collaboration_request"),
+    path('discussion/<int:incident_id>/', DiscussionMessageView.as_view(), name='discussion'),
+
     # Search Incident
     path('Search/', IncidentSearchView.as_view(), name="search"),
     path('prediction/', PredictionView.as_view(), name="predicton"),

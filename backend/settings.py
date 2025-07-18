@@ -14,17 +14,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 # SECURITY WARNING: keep the secret key used in production secret!
-# SECRET_KEY = 'django-insecure-4k+g*9g=6h&_8@s05ps!f)n!ivs4=yujv+rx(obnku=eyz3&jb'
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
 # À changer quand on le mettra en production
 DEBUG = True
 
 
-ALLOWED_HOSTS = [os.environ.get("ALLOWED_HOSTS", "localhost")]
+# Split the comma-separated ALLOWED_HOSTS environment variable into a list
+allowed_hosts_value = os.environ.get("ALLOWED_HOSTS", "localhost")
+ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_value.split(",")]
 
-
-
+# Add CSRF trusted origins for HTTPS
+CSRF_TRUSTED_ORIGINS = [f"https://{host.strip()}" for host in allowed_hosts_value.split(",")]
 
 
 # Application definition
@@ -107,6 +108,7 @@ SPECTACULAR_SETTINGS = {
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'Mapapi.middleware.OrganisationFromSubdomainMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -301,3 +303,6 @@ EMAIL_USE_SSL = False
 EMAIL_PORT = 2525
 EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER")
 EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD")
+
+# Supabase storage configuration
+USE_SUPABASE_STORAGE = os.environ.get('USE_SUPABASE_STORAGE', 'False').lower() in ('true', '1', 't')
