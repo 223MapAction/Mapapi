@@ -49,7 +49,7 @@ Mapapi (Map Action API) is a comprehensive solution that combines a robust API. 
 ## Technologies
 
 -   **Django**: Used to build the backend for Map Action mobile app and dashboard.
--   **Postgres**: Used to store users data and incidents reported
+-   **Supabase**: Used to store users data and incidents reported
 -   **Celery**: Used as an asynchronous task queue/job
 -   **Redis**: Used as a message broker for Celery and for caching.
 
@@ -57,7 +57,7 @@ Mapapi (Map Action API) is a comprehensive solution that combines a robust API. 
 
 -   **API**: Provides endpoints for managing and retrieving data on environment-related incidents.
 -   **Asynchronous Task Processing**: Uses Celery and Redis to handle background tasks efficiently.
--   **Database Management**: Utilizes Postgres for robust data storage and querying capabilities.
+-   **Database Management**: Utilizes Supabase for robust data storage and querying capabilities.
 
 ## System Architecture
 
