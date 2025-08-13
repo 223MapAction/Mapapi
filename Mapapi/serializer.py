@@ -1,10 +1,7 @@
 from rest_framework import serializers, generics, permissions, status
 from .models import *
 
-class OrganisationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Organisation
-        fields = '__all__'
+
 
 from rest_framework import serializers
 from django.contrib.auth import authenticate
@@ -27,7 +24,10 @@ from django.utils import timezone
 #         if zones:
 #             user.zones.set(zones)
 #         return user
-
+class OrganisationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Organisation
+        fields = '__all__'
 
 class UserRegisterSerializer(serializers.ModelSerializer):
     class Meta:

@@ -160,13 +160,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     community = models.ForeignKey('Communaute', db_column='user_communaute_id', related_name='user_communaute',
                                    on_delete=models.CASCADE, null=True, blank=True)
     provider = models.CharField(_('provider'), max_length=255, blank=True, null=True)
-    organisation = models.ForeignKey(
-        Organisation,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="users"
-    )
+    organisation = models.CharField(_('organisation'), max_length=255, blank=True, null=True)
     points = models.IntegerField(null=True, blank=True, default=0)
     zones = models.ManyToManyField('Zone', blank=True)
     verification_token = models.UUIDField(default=uuid.uuid4, editable=False, null=True, blank=True)

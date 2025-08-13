@@ -1,185 +1,178 @@
+# backend/supabase_storage.py
 import os
-import uuid
-from urllib.parse import urljoin
 from django.conf import settings
 from django.core.files.storage import Storage
+from django.core.files.base import ContentFile
+from django.utils.deconstruct import deconstructible
+
 from supabase import create_client, Client
 from storage3.utils import StorageException
 
+
+@deconstructible
 class SupabaseStorage(Storage):
     """
-    Custom storage backend for Supabase Storage
+    Custom storage backend for Supabase Storage (déconstructible).
+    Ne PAS mettre d'objet client dans __init__.
     """
-    def __init__(self, bucket_name=None):
-        # Initialize Supabase client
-        supabase_url = os.environ.get('SUPABASE_URL', '')
-        supabase_key = os.environ.get('SUPABASE_ANON_KEY', '')
-        
-        self.client: Client = create_client(supabase_url, supabase_key)
+    def __init__(
+        self,
+        bucket_name=None,
+        url_env="SUPABASE_URL",
+        key_env="SUPABASE_ANON_KEY",
+        signed_url_expiry=60 * 60 * 24 * 365,  # 1 an
+    ):
+        # ⚠️ Uniquement des types simples ici
         self.bucket_name = bucket_name
-    
+        self.url_env = url_env
+        self.key_env = key_env
+        self.signed_url_expiry = signed_url_expiry
+        # client non initialisé ici (lazy)
+
+    # Client Supabase créé à la volée (lazy) et non sérialisé dans la migration
+    @property
+    def client(self) -> Client:
+        supabase_url = os.environ.get(self.url_env, "")
+        supabase_key = os.environ.get(self.key_env, "")
+        if not supabase_url or not supabase_key:
+            raise RuntimeError("SUPABASE_URL/SUPABASE_ANON_KEY non définis dans l'environnement.")
+        return create_client(supabase_url, supabase_key)
+
     def _get_storage(self):
+        if not self.bucket_name:
+            raise RuntimeError("bucket_name non défini pour SupabaseStorage")
         return self.client.storage.from_(self.bucket_name)
-    
-    def _open(self, name, mode='rb'):
-        """
-        Retrieve the file from Supabase Storage
-        """
+
+    # Déconstruction explicite (facultative avec @deconstructible mais plus sûr)
+    def deconstruct(self):
+        path = "backend.supabase_storage.SupabaseStorage"
+        args = []
+        kwargs = {
+            "bucket_name": self.bucket_name,
+            "url_env": self.url_env,
+            "key_env": self.key_env,
+            "signed_url_expiry": self.signed_url_expiry,
+        }
+        return (path, args, kwargs)
+
+    def _open(self, name, mode="rb"):
         try:
-            # Get the file contents
             response = self._get_storage().download(name)
-            
-            # Create a file-like object
-            from django.core.files.base import ContentFile
             return ContentFile(response)
-        except StorageException as e:
-            # Handle error, e.g., file not found
+        except StorageException:
             raise FileNotFoundError(f"File {name} not found in bucket {self.bucket_name}")
 
     def _ensure_folder_exists(self, path):
-        """
-        Ensure that a folder exists in the bucket
-        Supabase requires folders to exist before files can be uploaded to them
-        """
-        if '/' in path:
-            folder_path = path.rsplit('/', 1)[0] + '/'
+        if "/" in path:
+            folder_path = path.rsplit("/", 1)[0] + "/"
             try:
-                # Check if folder exists by listing with prefix
-                folders = self._get_storage().list(path=folder_path)
-                # If we get here, the folder likely exists already
+                _ = self._get_storage().list(path=folder_path)
             except StorageException:
-                # Try to create the folder with an empty placeholder file
                 try:
-                    self._get_storage().upload(folder_path + '.placeholder', b'')
+                    self._get_storage().upload(folder_path + ".placeholder", b"")
                 except StorageException as e:
-                    # If folder already exists or we can't create it, just log and continue
+                    # non bloquant
                     print(f"Note: Could not verify/create folder {folder_path}: {e}")
-    
+
     def _save(self, name, content):
-        """
-        Save the file to Supabase Storage in the appropriate folder path
-        """
         try:
-            # Get the content as bytes
             file_content = content.read()
-            
-            # Ensure the folder exists before uploading (if there's a path)
-            if '/' in name:
+            if "/" in name:
                 self._ensure_folder_exists(name)
-            
-            # Upload to Supabase with the full path
-            result = self._get_storage().upload(name, file_content)
-            
-            # Return the file path that was saved
+            _ = self._get_storage().upload(name, file_content)
             return name
         except StorageException as e:
-            # Handle upload error
             raise IOError(f"Error saving file to Supabase Storage: {e}")
 
     def delete(self, name):
-        """
-        Delete the file from Supabase Storage
-        """
         try:
             self._get_storage().remove([name])
         except StorageException:
-            # File doesn't exist, pass silently
             pass
 
     def exists(self, name):
-        """
-        Check if a file exists in Supabase Storage
-        """
         try:
-            # Get folder path and filename
-            if '/' in name:
-                folder_path = name.rsplit('/', 1)[0]
-                filename = name.split('/')[-1]
-                # List files in the specific folder
+            if "/" in name:
+                folder_path = name.rsplit("/", 1)[0]
+                filename = name.split("/")[-1]
                 files = self._get_storage().list(folder_path)
             else:
-                # Files at bucket root
                 files = self._get_storage().list()
                 filename = name
-                
-            # Check if file exists in the folder
-            return any(file['name'] == filename for file in files)
+            return any((f.get("name") or f.get("Name")) == filename for f in files)
         except StorageException:
             return False
 
     def url(self, name):
-        """
-        Return the public URL for a file
-        """
         try:
-            # Use the sign endpoint instead of public as it's what Supabase now requires
-            # The sign endpoint generates a URL with a token that allows access to the file
-            return self._get_storage().create_signed_url(name, 60*60*24*365) # 1 year expiry
-        except StorageException as e:
+            signed = self._get_storage().create_signed_url(name, self.signed_url_expiry)
+            # selon la version, la clé peut être 'signedURL' ou 'signed_url'
+            if isinstance(signed, dict):
+                return signed.get("signedURL") or signed.get("signed_url") or None
+            return signed  # fallback si lib renvoie directement une str
+        except StorageException:
+            # essai fallback naïf (inutile si path correct)
             try:
-                # As fallback, try with just the filename
-                if '/' in name:
-                    filename = name.split('/')[-1]
-                    return self._get_storage().create_signed_url(filename, 60*60*24*365)
-                else:
-                    # Already tried with the name, so it truly failed
-                    return None
+                filename = name.split("/")[-1]
+                signed = self._get_storage().create_signed_url(filename, self.signed_url_expiry)
+                if isinstance(signed, dict):
+                    return signed.get("signedURL") or signed.get("signed_url") or None
+                return signed
             except StorageException:
                 return None
 
     def size(self, name):
-        """
-        Return the size of a file
-        """
         try:
-            # Get folder path and filename
-            if '/' in name:
-                folder_path = name.rsplit('/', 1)[0]
-                filename = name.split('/')[-1]
-                # List files in the specific folder
+            if "/" in name:
+                folder_path = name.rsplit("/", 1)[0]
+                filename = name.split("/")[-1]
                 files = self._get_storage().list(folder_path)
             else:
-                # Files at bucket root
                 files = self._get_storage().list()
                 filename = name
-                
-            # Find the file and get its size
-            for file in files:
-                if file['name'] == filename:
-                    return file.get('metadata', {}).get('size', 0)
+            for f in files:
+                if (f.get("name") or f.get("Name")) == filename:
+                    meta = f.get("metadata") or f.get("Metadata") or {}
+                    return meta.get("size") or meta.get("Size") or 0
             return 0
         except StorageException:
             return 0
 
     def get_accessed_time(self, name):
-        return None  # Not supported by Supabase Storage
+        return None
 
     def get_created_time(self, name):
-        return None  # Not supported by Supabase Storage
+        return None
 
     def get_modified_time(self, name):
-        return None  # Not supported by Supabase Storage
+        return None
 
 
+@deconstructible
 class ImageStorage(SupabaseStorage):
-    """
-    Storage for images using the 'images' bucket
-    """
-    def __init__(self):
-        super().__init__(bucket_name='images')
+    def __init__(self, **kwargs):
+        super().__init__(bucket_name="images", **kwargs)
+
+    def deconstruct(self):
+        path = "backend.supabase_storage.ImageStorage"
+        return (path, [], {})  # pas d’args/kwargs car bucket fixé
 
 
+@deconstructible
 class VideoStorage(SupabaseStorage):
-    """
-    Storage for videos using the 'videos' bucket
-    """
-    def __init__(self):
-        super().__init__(bucket_name='videos')
+    def __init__(self, **kwargs):
+        super().__init__(bucket_name="videos", **kwargs)
+
+    def deconstruct(self):
+        path = "backend.supabase_storage.VideoStorage"
+        return (path, [], {})
 
 
+@deconstructible
 class VoiceStorage(SupabaseStorage):
-    """
-    Storage for audio files using the 'voices' bucket
-    """
-    def __init__(self):
-        super().__init__(bucket_name='voices')
+    def __init__(self, **kwargs):
+        super().__init__(bucket_name="voices", **kwargs)
+
+    def deconstruct(self):
+        path = "backend.supabase_storage.VoiceStorage"
+        return (path, [], {})
