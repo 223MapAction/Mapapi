@@ -31,7 +31,7 @@ jobs:
 
   deploy:
     needs: cleanup
-    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
@@ -51,7 +51,7 @@ jobs:
               git clone https://github.com/223MapAction/Mapapi.git .
             fi
 
-            git pull origin dev
+            git pull origin main
 
             echo "Création du fichier .env..."
             cat > .env <<EOL
