@@ -512,4 +512,36 @@ class DiscussionMessage(models.Model):
 
 class OrganisationTag(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='incident_preferences')
-    incident_type = models.CharField(max_length=255)  
+    incident_type = models.CharField(max_length=255)
+
+
+class IVRCall(models.Model):
+    call_sid = models.CharField(max_length=255, unique=True)
+    phone_number = models.CharField(max_length=20)
+    status = models.CharField(max_length=50, default='initiated')
+    zone_selected = models.CharField(max_length=250, blank=True, null=True)
+    category_selected = models.ForeignKey('Category', on_delete=models.SET_NULL, null=True, blank=True)
+    description_audio_url = models.URLField(blank=True, null=True)
+    description_audio_duration = models.IntegerField(blank=True, null=True)
+    incident_created = models.ForeignKey('Incident', on_delete=models.SET_NULL, null=True, blank=True)
+    user = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"IVR Call {self.call_sid} - {self.phone_number}"
+
+
+class IVRInteraction(models.Model):
+    ivr_call = models.ForeignKey('IVRCall', on_delete=models.CASCADE, related_name='interactions')
+    step = models.CharField(max_length=50)
+    user_input = models.CharField(max_length=255, blank=True, null=True)
+    recording_url = models.URLField(blank=True, null=True)
+    recording_duration = models.IntegerField(blank=True, null=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['timestamp']
+    
+    def __str__(self):
+        return f"{self.ivr_call.call_sid} - {self.step}"  
