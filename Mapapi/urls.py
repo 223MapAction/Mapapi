@@ -1,5 +1,10 @@
 from django.urls import path, include
 from .views import *
+from .ivr_views import (
+    TwilioIVRWebhook, SelectZoneView, SelectCategoryView,
+    RecordDescriptionView, ProcessRecordingView, RecordingStatusView,
+    IVRCallListView, IVRCallDetailView
+)
 from django.contrib.auth.views import (
     LoginView, LogoutView,
     PasswordChangeView, PasswordChangeDoneView,
@@ -127,5 +132,14 @@ urlpatterns = [
     path('set-password/', SetPasswordView.as_view(), name='set-password'),
     path('otpRequest/', RequestOTPView.as_view(), name='otp-request'),
     path('verifyOtp/', VerifyOTPView.as_view(), name='verify-otp'),
+    
+    path('ivr/webhook/', TwilioIVRWebhook.as_view(), name='ivr-webhook'),
+    path('ivr/select-zone/', SelectZoneView.as_view(), name='ivr-select-zone'),
+    path('ivr/select-category/', SelectCategoryView.as_view(), name='ivr-select-category'),
+    path('ivr/record-description/', RecordDescriptionView.as_view(), name='ivr-record-description'),
+    path('ivr/process-recording/', ProcessRecordingView.as_view(), name='ivr-process-recording'),
+    path('ivr/recording-status/', RecordingStatusView.as_view(), name='ivr-recording-status'),
+    path('ivr/calls/', IVRCallListView.as_view(), name='ivr-calls-list'),
+    path('ivr/calls/<int:call_id>/', IVRCallDetailView.as_view(), name='ivr-call-detail'),
 
 ]
