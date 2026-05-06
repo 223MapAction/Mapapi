@@ -1,5 +1,14 @@
 from django.urls import path, include
 from .views import *
+from .views.task import (
+    IncidentTaskListCreateView, IncidentTaskDetailView,
+    IncidentTaskCompleteView, IncidentTaskFailView,
+)
+from .views.partner_suggestion import (
+    PartnerSuggestionListCreateView, PartnerSuggestionDetailView,
+    PartnerSuggestionAcceptView, PartnerSuggestionRejectView,
+)
+from .views.incident import TakeInChargeView, CloseIncidentView, MyIncidentsView
 from .ivr_views import (
     TwilioIVRWebhook, SelectZoneView, SelectCategoryView,
     RecordDescriptionView, ProcessRecordingView, RecordingStatusView,
@@ -51,6 +60,7 @@ urlpatterns = [
     path('IncidentOnWeek/', IncidentOnWeekAPIListView.as_view(), name='IncidentOnWeek'),
     path('IncidentOnWeek_zone/<zone>', IncidentByWeekByZoneAPIView.as_view(), name='IncidentOnWeek_zone'),
     path('incident-filter/', IncidentFilterView.as_view(), name='incident_filter'),
+    path('my-incidents/', MyIncidentsView.as_view(), name='my-incidents'),
     # URL for views Events
     path('Event/<int:id>', EvenementAPIView.as_view(), name='event'),
     path('Event/', EvenementAPIListView.as_view(), name='event'),
@@ -142,4 +152,21 @@ urlpatterns = [
     path('ivr/calls/', IVRCallListView.as_view(), name='ivr-calls-list'),
     path('ivr/calls/<int:call_id>/', IVRCallDetailView.as_view(), name='ivr-call-detail'),
 
+    # --- Tâches d'incident (CRUD + complete/fail) ---
+    path('incidents/<int:incident_id>/tasks/', IncidentTaskListCreateView.as_view(), name='incident-task-list'),
+    path('incidents/<int:incident_id>/tasks/<int:pk>/', IncidentTaskDetailView.as_view(), name='incident-task-detail'),
+    path('incidents/<int:incident_id>/tasks/<int:pk>/complete/', IncidentTaskCompleteView.as_view(), name='incident-task-complete'),
+    path('incidents/<int:incident_id>/tasks/<int:pk>/fail/', IncidentTaskFailView.as_view(), name='incident-task-fail'),
+
+    # --- Suggestions de partenaires (CRUD + accept/reject) ---
+    path('incidents/<int:incident_id>/suggestions/', PartnerSuggestionListCreateView.as_view(), name='partner-suggestion-list'),
+    path('incidents/<int:incident_id>/suggestions/<int:pk>/', PartnerSuggestionDetailView.as_view(), name='partner-suggestion-detail'),
+    path('incidents/<int:incident_id>/suggestions/<int:pk>/accept/', PartnerSuggestionAcceptView.as_view(), name='partner-suggestion-accept'),
+    path('incidents/<int:incident_id>/suggestions/<int:pk>/reject/', PartnerSuggestionRejectView.as_view(), name='partner-suggestion-reject'),
+
+    # --- Prise en charge et clôture d'incident ---
+    path('incidents/<int:incident_id>/take_in_charge/', TakeInChargeView.as_view(), name='incident-take-in-charge'),
+    path('incidents/<int:incident_id>/close/', CloseIncidentView.as_view(), name='incident-close'),
+
 ]
+

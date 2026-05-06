@@ -10,20 +10,6 @@ from django.contrib.auth.hashers import make_password
 from django.utils import timezone
 
 
-# class UserSerializer(ModelSerializer):
-#     class Meta:
-#         model = User
-#         exclude = (
-#             'user_permissions', 'is_superuser', 'is_active', 'is_staff')
-
-#     def create(self, validated_data):
-#         zones = validated_data.pop('zones', None)
-#         user = self.Meta.model(**validated_data)
-#         user.set_password(validated_data['password'])
-#         user.save()
-#         if zones:
-#             user.zones.set(zones)
-#         return user
 class OrganisationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organisation
@@ -131,6 +117,38 @@ class IncidentSerializer(ModelSerializer):
     class Meta:
         model = Incident
         fields = '__all__'
+        read_only_fields = ('progress',)
+
+    def validate(self, data):
+        """Validation supplémentaire sur la clôture d'un incident.
+
+        Un incident ne peut passer à l'état RESOLVED que si :
+          - `resolution_start_date` ET `resolution_end_date` sont renseignées ;
+          - toutes les tâches associées sont à l'état 'done'.
+        """
+        # on prend la nouvelle valeur d'etat si elle est fournie, sinon l'actuelle
+        new_etat = data.get('etat', getattr(self.instance, 'etat', None))
+        if new_etat == RESOLVED:
+            start = data.get('resolution_start_date',
+                             getattr(self.instance, 'resolution_start_date', None))
+            end = data.get('resolution_end_date',
+                           getattr(self.instance, 'resolution_end_date', None))
+            if not start or not end:
+                raise serializers.ValidationError(
+                    "La clôture d'un incident exige resolution_start_date et resolution_end_date."
+                )
+            if start > end:
+                raise serializers.ValidationError(
+                    "resolution_start_date doit être antérieure ou égale à resolution_end_date."
+                )
+            # toutes les tâches doivent être terminées
+            if self.instance is not None:
+                open_tasks = self.instance.tasks.exclude(state__in=[TASK_DONE, TASK_FAILED])
+                if open_tasks.exists():
+                    raise serializers.ValidationError(
+                        f"Impossible de clôturer : {open_tasks.count()} tâche(s) non terminée(s)."
+                    )
+        return data
 
 
 class IncidentGetSerializer(ModelSerializer):
@@ -284,17 +302,36 @@ class CollaborationSerializer(ModelSerializer):
     class Meta:
         model = Collaboration
         fields = '__all__'
+        # 'status' et 'role' ne sont PAS settables librement par le demandeur :
+        # - status est géré par le leader via les endpoints accept/decline
+        # - role = 'leader' est auto-attribué quand une organisation prend l'incident ;
+        #   une demande manuelle ne peut proposer que contributor/observer
         read_only_fields = ('status',)
 
+    def validate_role(self, value):
+        """Un utilisateur ne peut pas se déclarer leader lui-même.
+
+        Le rôle leader est exclusivement attribué automatiquement à l'organisation
+        qui prend l'incident en charge (Incident.taken_by).
+        """
+        if value == COLLAB_ROLE_LEADER:
+            raise serializers.ValidationError(
+                "Le rôle 'leader' ne peut pas être demandé manuellement. "
+                "Il est attribué automatiquement lors de la prise en charge de l'incident."
+            )
+        return value
+
     def validate(self, data):
-        # Check for existing collaboration
-        if self.Meta.model.objects.filter(incident=data['incident'], user=data['user']).exists():
-            raise serializers.ValidationError("Une collaboration existe déjà pour cet utilisateur sur cet incident")
-        
-        # Validate end date
+        # Valider la date de fin : doit être future si fournie
         if data.get('end_date') and data['end_date'] <= timezone.now().date():
             raise serializers.ValidationError("La date de fin doit être dans le futur")
-        
+
+        # On ne peut pas créer une collaboration sur un incident clôturé
+        incident = data.get('incident') or getattr(self.instance, 'incident', None)
+        if incident and incident.is_resolved:
+            raise serializers.ValidationError(
+                "Impossible d'ajouter une collaboration : l'incident est clôturé."
+            )
         return data
 
 class ColaborationSerializer(serializers.ModelSerializer):
@@ -328,9 +365,88 @@ class UserActionSerializer(serializers.ModelSerializer):
 class DiscussionMessageSerializer(serializers.ModelSerializer):
     sender = UserSerializer(read_only=True)
     recipient = UserSerializer(read_only=True)
+
     class Meta:
         model = DiscussionMessage
-        fields = ['id', 'incident', 'collaboration', 'sender', 'message', 'created_at','recipient']
-        read_only_fields = ('sender', 'incident', 'collaboration','recipient')
+        fields = ['id', 'incident', 'collaboration', 'sender',
+                  'message', 'audio', 'attachment',
+                  'created_at', 'recipient']
+        read_only_fields = ('sender', 'incident', 'collaboration', 'recipient')
+
+    def validate(self, data):
+        """Un message doit contenir au moins un payload : texte, audio ou pièce jointe."""
+        message = data.get('message') or (self.instance.message if self.instance else None)
+        audio = data.get('audio') or (self.instance.audio if self.instance else None)
+        attachment = data.get('attachment') or (self.instance.attachment if self.instance else None)
+        if not message and not audio and not attachment:
+            raise serializers.ValidationError(
+                "Un message doit contenir du texte, un audio ou une pièce jointe."
+            )
+        return data
+
+
+class IncidentTaskSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IncidentTask
+        fields = '__all__'
+        read_only_fields = ('created_by', 'created_at', 'updated_at')
+
+    def validate(self, data):
+        # Refus d'ajouter/modifier une tâche sur un incident clôturé
+        incident = data.get('incident') or getattr(self.instance, 'incident', None)
+        if incident and incident.is_resolved:
+            raise serializers.ValidationError(
+                "Impossible de modifier les tâches d'un incident clôturé."
+            )
+
+        start = data.get('start_date', getattr(self.instance, 'start_date', None))
+        end = data.get('end_date', getattr(self.instance, 'end_date', None))
+        if start and end and start > end:
+            raise serializers.ValidationError(
+                "start_date doit être antérieure ou égale à end_date."
+            )
+
+        # Validations conditionnelles sur l'état final
+        state = data.get('state', getattr(self.instance, 'state', TASK_PENDING))
+        proof_image = data.get('proof_image', getattr(self.instance, 'proof_image', None))
+        proof_video = data.get('proof_video', getattr(self.instance, 'proof_video', None))
+        failure_reason = data.get('failure_reason', getattr(self.instance, 'failure_reason', None))
+
+        if state == TASK_DONE and not (proof_image or proof_video):
+            raise serializers.ValidationError(
+                "Une tâche marquée 'done' doit fournir une preuve (image ou vidéo)."
+            )
+        if state == TASK_FAILED and not failure_reason:
+            raise serializers.ValidationError(
+                "Une tâche marquée 'failed' doit inclure un motif (failure_reason)."
+            )
+        return data
+
+
+class PartnerSuggestionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PartnerSuggestion
+        fields = '__all__'
+        read_only_fields = ('suggested_by', 'status', 'created_at', 'updated_at')
+
+    def validate(self, data):
+        incident = data.get('incident') or getattr(self.instance, 'incident', None)
+        if incident and incident.is_resolved:
+            raise serializers.ValidationError(
+                "Impossible de suggérer un partenaire sur un incident clôturé."
+            )
+
+        suggested_partner = data.get('suggested_partner') or getattr(
+            self.instance, 'suggested_partner', None)
+        if incident and suggested_partner:
+            # refuser si l'organisation est déjà collaboratrice acceptée
+            already = Collaboration.objects.filter(
+                incident=incident, user=suggested_partner, status='accepted'
+            ).exists()
+            if already:
+                raise serializers.ValidationError(
+                    "Cette organisation collabore déjà sur l'incident."
+                )
+        return data
 
 

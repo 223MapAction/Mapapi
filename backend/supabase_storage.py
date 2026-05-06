@@ -7,6 +7,12 @@ from django.utils.deconstruct import deconstructible
 
 from supabase import create_client, Client
 from storage3.utils import StorageException
+from functools import lru_cache
+
+
+@lru_cache(maxsize=8)
+def _get_supabase_client_cached(supabase_url: str, supabase_key: str) -> Client:
+    return create_client(supabase_url, supabase_key)
 
 
 @deconstructible
@@ -36,7 +42,7 @@ class SupabaseStorage(Storage):
         supabase_key = os.environ.get(self.key_env, "")
         if not supabase_url or not supabase_key:
             raise RuntimeError("SUPABASE_URL/SUPABASE_ANON_KEY non définis dans l'environnement.")
-        return create_client(supabase_url, supabase_key)
+        return _get_supabase_client_cached(supabase_url, supabase_key)
 
     def _get_storage(self):
         if not self.bucket_name:
@@ -105,6 +111,12 @@ class SupabaseStorage(Storage):
 
     def url(self, name):
         try:
+            storage_public = os.environ.get('SUPABASE_STORAGE_PUBLIC', 'False').lower() in ('true', '1', 't')
+            if storage_public:
+                public = self._get_storage().get_public_url(name)
+                if isinstance(public, dict):
+                    return public.get('publicUrl') or public.get('publicURL') or public.get('public_url') or None
+                return public
             signed = self._get_storage().create_signed_url(name, self.signed_url_expiry)
             # selon la version, la clé peut être 'signedURL' ou 'signed_url'
             if isinstance(signed, dict):
@@ -114,6 +126,12 @@ class SupabaseStorage(Storage):
             # essai fallback naïf (inutile si path correct)
             try:
                 filename = name.split("/")[-1]
+                storage_public = os.environ.get('SUPABASE_STORAGE_PUBLIC', 'False').lower() in ('true', '1', 't')
+                if storage_public:
+                    public = self._get_storage().get_public_url(filename)
+                    if isinstance(public, dict):
+                        return public.get('publicUrl') or public.get('publicURL') or public.get('public_url') or None
+                    return public
                 signed = self._get_storage().create_signed_url(filename, self.signed_url_expiry)
                 if isinstance(signed, dict):
                     return signed.get("signedURL") or signed.get("signed_url") or None
@@ -175,4 +193,16 @@ class VoiceStorage(SupabaseStorage):
 
     def deconstruct(self):
         path = "backend.supabase_storage.VoiceStorage"
+        return (path, [], {})
+
+
+@deconstructible
+class DocumentStorage(SupabaseStorage):
+    """Storage backend for document attachments (PDF, Word, Excel)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(bucket_name="documents", **kwargs)
+
+    def deconstruct(self):
+        path = "backend.supabase_storage.DocumentStorage"
         return (path, [], {})
