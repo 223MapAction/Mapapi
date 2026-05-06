@@ -322,11 +322,6 @@ LOGGING = {
     },
 }
 
-print("DEBUG ENV CHECK - SECRET_KEY:", os.environ.get("SECRET_KEY"))
-print("DEBUG ENV CHECK - DB_HOST:", os.environ.get("DB_HOST"))
-print("DEBUG ENV CHECK - port:", os.environ.get("PORT"))
-print("DEBUG ENV CHECK - user:", os.environ.get("POSTGRES_USER"))
-
 
 AUTH_USER_MODEL = 'Mapapi.User'
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'

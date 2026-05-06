@@ -13,7 +13,8 @@ from django.conf import settings
 from django.utils.html import format_html
 
 # Import the custom storage classes
-from backend.supabase_storage import ImageStorage, VideoStorage, VoiceStorage
+from backend.supabase_storage import ImageStorage, VideoStorage, VoiceStorage, DocumentStorage
+from django.core.validators import FileExtensionValidator
 
 ADMIN = 'admin'
 VISITOR = 'visitor'
@@ -46,6 +47,44 @@ ETAT_RAPPORT = (
     ("edit", "edit"),
     ("canceled", "canceled")
 )
+
+# --- Collaboration / Task constants ---
+COLLAB_ROLE_LEADER = 'leader'
+COLLAB_ROLE_CONTRIBUTOR = 'contributor'
+COLLAB_ROLE_OBSERVER = 'observer'
+COLLAB_ROLES = (
+    (COLLAB_ROLE_LEADER, COLLAB_ROLE_LEADER),
+    (COLLAB_ROLE_CONTRIBUTOR, COLLAB_ROLE_CONTRIBUTOR),
+    (COLLAB_ROLE_OBSERVER, COLLAB_ROLE_OBSERVER),
+)
+
+TASK_PENDING = 'pending'
+TASK_IN_PROGRESS = 'in_progress'
+TASK_DONE = 'done'
+TASK_FAILED = 'failed'
+TASK_STATES = (
+    (TASK_PENDING, TASK_PENDING),
+    (TASK_IN_PROGRESS, TASK_IN_PROGRESS),
+    (TASK_DONE, TASK_DONE),
+    (TASK_FAILED, TASK_FAILED),
+)
+
+SUGGESTION_PENDING = 'pending'
+SUGGESTION_ACCEPTED = 'accepted'
+SUGGESTION_REJECTED = 'rejected'
+SUGGESTION_STATUSES = (
+    (SUGGESTION_PENDING, SUGGESTION_PENDING),
+    (SUGGESTION_ACCEPTED, SUGGESTION_ACCEPTED),
+    (SUGGESTION_REJECTED, SUGGESTION_REJECTED),
+)
+# Suggestions ne peuvent proposer que des rôles non-leader
+SUGGESTION_ROLES = (
+    (COLLAB_ROLE_CONTRIBUTOR, COLLAB_ROLE_CONTRIBUTOR),
+    (COLLAB_ROLE_OBSERVER, COLLAB_ROLE_OBSERVER),
+)
+
+# Extensions autorisées pour les pièces jointes du chat
+CHAT_ATTACHMENT_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx']
 
 
 # Modèle d'organisation pour gérer les organisations liées aux utilisateurs
@@ -254,9 +293,46 @@ class Incident(models.Model):
     category_ids = models.ManyToManyField('Category', blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     taken_by = models.ForeignKey(User, related_name='taken_incidents', null=True, blank=True, on_delete=models.SET_NULL)
+    # --- Spec : suivi résolution incident ---
+    resolution_start_date = models.DateField(null=True, blank=True,
+                                             help_text="Date de début de la résolution. Obligatoire à la clôture.")
+    resolution_end_date = models.DateField(null=True, blank=True,
+                                           help_text="Date de fin de la résolution. Obligatoire à la clôture.")
+    progress = models.PositiveSmallIntegerField(default=0,
+                                                help_text="Progression auto-calculée (0-100) selon avancement des tâches.")
 
     def __str__(self):
         return self.zone + ' '
+
+    def update_progress(self, save=True):
+        """Recalcule la progression de l'incident en fonction de ses tâches.
+
+        Une tâche 'done' compte comme terminée (poids 1).
+        Une tâche 'failed' est considérée comme close (poids 1) mais ne contribue pas à 100%.
+        Progression = round(done / total * 100).
+        """
+        tasks = self.tasks.all()
+        total = tasks.count()
+        if total == 0:
+            self.progress = 0
+        else:
+            done = tasks.filter(state=TASK_DONE).count()
+            self.progress = round(done * 100 / total)
+        if save:
+            self.save(update_fields=['progress'])
+        return self.progress
+
+    @property
+    def is_resolved(self):
+        return self.etat == RESOLVED
+
+    def can_add_task(self):
+        """Une tâche ne peut être ajoutée qu'avant la clôture."""
+        return not self.is_resolved
+
+    def can_suggest_partner(self):
+        """Une suggestion ne peut être faite qu'avant la clôture."""
+        return not self.is_resolved
 
 
 class Evenement(models.Model):
@@ -435,15 +511,18 @@ class Collaboration(models.Model):
     incident = models.ForeignKey('Incident', blank=False, null=False, on_delete=models.CASCADE)
     user = models.ForeignKey(User, blank=False, null=False, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
-    end_date = models.DateField(blank=True)
-    motivation = models.TextField(blank=True, null=True)  
-    other_option = models.CharField(max_length=255, blank=True, null=True) 
+    end_date = models.DateField(blank=True, null=True)
+    motivation = models.TextField(blank=True, null=True)
+    other_option = models.CharField(max_length=255, blank=True, null=True)
     status = models.CharField(max_length=20, default='pending')
-    
+    role = models.CharField(max_length=20, choices=COLLAB_ROLES, default=COLLAB_ROLE_CONTRIBUTOR,
+                            help_text="Rôle de l'organisation sur l'incident : leader, contributor ou observer.")
+
     class Meta:
         unique_together = (("incident", "user"),)
+
     def __str__(self):
-        return f"Collaboration on {self.incident} by {self.user}"
+        return f"Collaboration on {self.incident} by {self.user} ({self.role})"
     
 # Collaboration table
 class Colaboration(models.Model):
@@ -503,12 +582,103 @@ class DiscussionMessage(models.Model):
     incident = models.ForeignKey('Incident', on_delete=models.CASCADE)
     collaboration = models.ForeignKey(Collaboration, on_delete=models.CASCADE)
     sender = models.ForeignKey(User, on_delete=models.CASCADE)
-    message = models.TextField()
+    # message texte (peut être vide si le message ne contient qu'un audio ou une pièce jointe)
+    message = models.TextField(blank=True, null=True)
+    audio = models.FileField(upload_to='chat/audio/', storage=VoiceStorage(),
+                             blank=True, null=True)
+    attachment = models.FileField(
+        upload_to='chat/attachments/', storage=DocumentStorage(),
+        blank=True, null=True,
+        validators=[FileExtensionValidator(allowed_extensions=CHAT_ATTACHMENT_EXTENSIONS)],
+        help_text="Pièce jointe : PDF, Word ou Excel uniquement.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="received_messages", null=True, blank=True)
-    
+
     def __str__(self):
         return f"Message de {self.sender} le {self.created_at}"
+
+    def clean(self):
+        """Au moins un des champs (message, audio, attachment) doit être fourni."""
+        from django.core.exceptions import ValidationError
+        if not self.message and not self.audio and not self.attachment:
+            raise ValidationError("Un message doit contenir du texte, un audio ou une pièce jointe.")
+
+
+# --- Tâches d'incident (gérées par le leader) ---
+class IncidentTask(models.Model):
+    incident = models.ForeignKey('Incident', related_name='tasks', on_delete=models.CASCADE)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True, null=True)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    state = models.CharField(max_length=20, choices=TASK_STATES, default=TASK_PENDING)
+    proof_image = models.ImageField(upload_to='tasks/proofs/', storage=ImageStorage(),
+                                    null=True, blank=True,
+                                    help_text="Image de preuve quand la tâche est marquée 'done'.")
+    proof_video = models.FileField(upload_to='tasks/proofs/', storage=VideoStorage(),
+                                   null=True, blank=True,
+                                   help_text="Vidéo de preuve quand la tâche est marquée 'done'.")
+    failure_reason = models.TextField(blank=True, null=True,
+                                      help_text="Motif d'échec si la tâche est 'failed'.")
+    assigned_to = models.ForeignKey(User, related_name='assigned_tasks', null=True, blank=True,
+                                    on_delete=models.SET_NULL)
+    created_by = models.ForeignKey(User, related_name='created_tasks', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ('start_date', 'id')
+
+    def __str__(self):
+        return f"Task '{self.title}' (#{self.id}) - {self.state}"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValidationError("La date de début doit être antérieure ou égale à la date de fin.")
+        if self.state == TASK_DONE and not (self.proof_image or self.proof_video):
+            raise ValidationError("Une tâche terminée doit fournir une preuve (image ou vidéo).")
+        if self.state == TASK_FAILED and not self.failure_reason:
+            raise ValidationError("Une tâche en échec doit avoir un motif renseigné.")
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # met à jour la progression de l'incident après chaque sauvegarde
+        try:
+            self.incident.update_progress()
+        except Exception:
+            pass
+
+    def delete(self, *args, **kwargs):
+        incident = self.incident
+        super().delete(*args, **kwargs)
+        try:
+            incident.update_progress()
+        except Exception:
+            pass
+
+
+# --- Suggestions de partenaires (par contributors, validées par le leader) ---
+class PartnerSuggestion(models.Model):
+    incident = models.ForeignKey('Incident', related_name='partner_suggestions', on_delete=models.CASCADE)
+    suggested_by = models.ForeignKey(User, related_name='suggestions_made', on_delete=models.CASCADE,
+                                     help_text="Contributeur à l'origine de la suggestion.")
+    suggested_partner = models.ForeignKey(User, related_name='suggestions_received', on_delete=models.CASCADE,
+                                          help_text="Organisation proposée.")
+    suggested_role = models.CharField(max_length=20, choices=SUGGESTION_ROLES,
+                                      help_text="Rôle proposé (contributor ou observer uniquement).")
+    justification = models.TextField(help_text="Court message justifiant la suggestion.")
+    status = models.CharField(max_length=20, choices=SUGGESTION_STATUSES, default=SUGGESTION_PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = (("incident", "suggested_partner"),)
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return f"Suggestion {self.suggested_partner} ({self.suggested_role}) on {self.incident} - {self.status}"
 
 class OrganisationTag(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='incident_preferences')
