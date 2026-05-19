@@ -30,6 +30,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
+      - name: Clean Docker BEFORE build
+        run: |
+          docker system prune -af --volumes || true
+          docker builder prune -af || true
+
       - name: Create .env file
         run: |
           {
