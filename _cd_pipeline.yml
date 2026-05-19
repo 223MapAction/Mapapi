@@ -56,6 +56,9 @@ services:
             - SUPABASE_URL=${SUPABASE_URL}
             - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
             - USE_SUPABASE_STORAGE=${USE_SUPABASE_STORAGE}
+            - ORANGE_CLIENT_ID=${ORANGE_CLIENT_ID}
+            - ORANGE_CLIENT_SECRET=${ORANGE_CLIENT_SECRET}
+            - ORANGE_SENDER_ADDRESS=${ORANGE_SENDER_ADDRESS}
         depends_on:
             # - postgres-db
             - redis

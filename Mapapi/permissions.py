@@ -123,3 +123,43 @@ class IsIncidentLeaderOrReadOnlyCollaborator(BasePermission):
         if request.method in SAFE_METHODS:
             return IsIncidentCollaborator().has_object_permission(request, view, obj)
         return IsIncidentLeader().has_object_permission(request, view, obj)
+
+
+class IsSuperAdmin(BasePermission):
+    """Autorise uniquement les super admins (is_superuser=True)."""
+
+    message = "Seul un super administrateur peut effectuer cette action."
+
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated and request.user.is_superuser
+
+    def has_object_permission(self, request, view, obj):
+        return request.user and request.user.is_authenticated and request.user.is_superuser
+
+
+class IsSuperAdminOrOrgOwnIncident(BasePermission):
+    """Super Admin peut supprimer tous les incidents. Organisation ne peut supprimer que ses incidents."""
+
+    message = "Vous n'avez pas la permission de supprimer cet incident."
+
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated
+
+    def has_object_permission(self, request, view, obj):
+        # Super admin peut tout supprimer
+        if request.user.is_superuser:
+            return True
+
+        # Organisation ne peut supprimer que ses propres incidents
+        if isinstance(obj, Incident):
+            user_org = request.user.organisation_member
+            if user_org:
+                # L'incident appartient à l'organisation si:
+                # - Il a été reporté par un agent de l'organisation
+                # - Ou il a été pris en charge par l'organisation (taken_by)
+                if obj.user_id and obj.user_id.organisation_member == user_org:
+                    return True
+                if obj.taken_by and obj.taken_by.organisation_member == user_org:
+                    return True
+
+        return False

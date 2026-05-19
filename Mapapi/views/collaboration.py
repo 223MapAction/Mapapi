@@ -1,5 +1,5 @@
-"""Collaboration endpoints (request, accept, decline, handle)."""
-from django.db.models import Q
+"""Collaboration endpoints (request, accept, decline, handle, dashboard)."""
+from django.db.models import Q, Count
 from django.utils import timezone
 
 from rest_framework import status, generics
@@ -10,9 +10,74 @@ from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema
 
 from ..models import Collaboration, Notification, COLLAB_ROLE_LEADER
-from ..serializer import CollaborationSerializer
+from ..serializer import CollaborationSerializer, CollaborationEnrichedSerializer
 from ..Send_mails import send_email
 from .common import CustomPageNumberPagination
+
+
+@extend_schema(
+    description="Vue dashboard des collaborations enrichies avec filtrage par statut, "
+                "période et recherche textuelle.",
+    responses={200: CollaborationEnrichedSerializer(many=True)},
+)
+class CollaborationDashboardView(generics.ListAPIView):
+    """GET /collaborations/dashboard/
+
+    Filtres query params :
+      ?status=all|in-progress|completed|pending|accepted|declined
+      ?date_from=YYYY-MM-DD  (end_date >= date_from)
+      ?date_to=YYYY-MM-DD    (created_at <= date_to)
+      ?search=texte           (titre incident, org, rôle, zone)
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = CollaborationEnrichedSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = Collaboration.objects.filter(
+            Q(user=user) | Q(incident__taken_by=user)
+        ).select_related(
+            'incident', 'user', 'user__organisation_member'
+        ).order_by('-created_at')
+
+        # --- Filtre par statut ---
+        status_filter = self.request.query_params.get('status', 'all')
+        status_map = {
+            'in-progress': ['accepted'],
+            'completed': ['accepted'],  # on filtre ensuite par etat incident
+            'pending': ['pending'],
+            'accepted': ['accepted'],
+            'declined': ['declined'],
+        }
+        if status_filter in status_map:
+            qs = qs.filter(status__in=status_map[status_filter])
+        if status_filter == 'completed':
+            qs = qs.filter(incident__etat='resolved')
+        elif status_filter == 'in-progress':
+            qs = qs.exclude(incident__etat='resolved')
+
+        # --- Filtre par période ---
+        date_from = self.request.query_params.get('date_from')
+        date_to = self.request.query_params.get('date_to')
+        if date_from:
+            qs = qs.filter(
+                Q(end_date__gte=date_from) | Q(end_date__isnull=True)
+            )
+        if date_to:
+            qs = qs.filter(created_at__date__lte=date_to)
+
+        # --- Recherche textuelle ---
+        search = self.request.query_params.get('search', '').strip()
+        if search:
+            qs = qs.filter(
+                Q(incident__title__icontains=search)
+                | Q(user__organisation__icontains=search)
+                | Q(user__organisation_member__name__icontains=search)
+                | Q(role__icontains=search)
+                | Q(incident__zone__icontains=search)
+            )
+
+        return qs
 
 
 class CollaborationView(generics.CreateAPIView, generics.ListAPIView):

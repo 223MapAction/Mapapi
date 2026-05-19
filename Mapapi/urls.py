@@ -8,7 +8,15 @@ from .views.partner_suggestion import (
     PartnerSuggestionListCreateView, PartnerSuggestionDetailView,
     PartnerSuggestionAcceptView, PartnerSuggestionRejectView,
 )
-from .views.incident import TakeInChargeView, CloseIncidentView, MyIncidentsView
+from .views.incident import (
+    TakeInChargeView, CloseIncidentView, MyIncidentsView,
+    OrgIncidentsView, AgentCodeLoginView, ToggleIncidentPublicView,
+    TrashIncidentsView, RestoreIncidentView,
+)
+from .views.organisation import (
+    OrganisationMemberListView, OrganisationMemberCreateView,
+    OrganisationMemberDetailView,
+)
 from .ivr_views import (
     TwilioIVRWebhook, SelectZoneView, SelectCategoryView,
     RecordDescriptionView, ProcessRecordingView, RecordingStatusView,
@@ -31,6 +39,10 @@ urlpatterns = [
     path('tenant-config/', TenantConfigView.as_view(), name='tenant_config'),
     path('organisations/', OrganisationViewSet.as_view(), name='organisation-list-create'),
     path('organisations/<int:pk>', OrganisationViewSet.as_view(), name='organisation-detail'),
+    # --- Gestion des membres d'une organisation ---
+    path('organisations/<int:pk>/members/', OrganisationMemberListView.as_view(), name='organisation-members-list'),
+    path('organisations/<int:pk>/members/add/', OrganisationMemberCreateView.as_view(), name='organisation-members-add'),
+    path('organisations/<int:pk>/members/<int:user_id>/', OrganisationMemberDetailView.as_view(), name='organisation-members-detail'),
     # URL PATTERNS for the documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     # Optional UI:
@@ -61,6 +73,8 @@ urlpatterns = [
     path('IncidentOnWeek_zone/<zone>', IncidentByWeekByZoneAPIView.as_view(), name='IncidentOnWeek_zone'),
     path('incident-filter/', IncidentFilterView.as_view(), name='incident_filter'),
     path('my-incidents/', MyIncidentsView.as_view(), name='my-incidents'),
+    path('org-incidents/', OrgIncidentsView.as_view(), name='org-incidents'),
+    path('agent-login/', AgentCodeLoginView.as_view(), name='agent-login'),
     # URL for views Events
     path('Event/<int:id>', EvenementAPIView.as_view(), name='event'),
     path('Event/', EvenementAPIListView.as_view(), name='event'),
@@ -117,6 +131,7 @@ urlpatterns = [
     path('verify_otp/', PhoneOTPView.as_view(), name="verify_otp"),
     # Collaboration URL
     path('collaboration/', CollaborationView.as_view(), name='collaboration'),
+    path('collaborations/dashboard/', CollaborationDashboardView.as_view(), name='collaboration-dashboard'),
     path('accept-collaboration/', AcceptCollaborationView.as_view(), name='accept-collaboration'),
     path('decline/', DeclineCollaborationView.as_view(), name='decline-collaboration'),
     path('collaborations/accept/', AcceptCollaborationView.as_view(), name='accept-collaboration'),
@@ -167,6 +182,11 @@ urlpatterns = [
     # --- Prise en charge et clôture d'incident ---
     path('incidents/<int:incident_id>/take_in_charge/', TakeInChargeView.as_view(), name='incident-take-in-charge'),
     path('incidents/<int:incident_id>/close/', CloseIncidentView.as_view(), name='incident-close'),
+    path('incidents/<int:incident_id>/toggle-public/', ToggleIncidentPublicView.as_view(), name='incident-toggle-public'),
+
+    # --- Corbeille (Super Admin uniquement) ---
+    path('incidents/trash/', TrashIncidentsView.as_view(), name='incident-trash'),
+    path('incidents/<int:incident_id>/restore/', RestoreIncidentView.as_view(), name='incident-restore'),
 
 ]
 

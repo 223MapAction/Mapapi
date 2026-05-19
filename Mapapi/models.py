@@ -86,6 +86,16 @@ SUGGESTION_ROLES = (
 # Extensions autorisées pour les pièces jointes du chat
 CHAT_ATTACHMENT_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx']
 
+# --- Rôles internes à l'organisation ---
+ORG_ROLE_ADMIN = 'org_admin'
+ORG_ROLE_BUREAU = 'bureau_agent'
+ORG_ROLE_FIELD = 'field_agent'
+ORG_ROLES = (
+    (ORG_ROLE_ADMIN, 'Admin organisation'),
+    (ORG_ROLE_BUREAU, 'Agent de bureau'),
+    (ORG_ROLE_FIELD, 'Agent de terrain'),
+)
+
 
 # Modèle d'organisation pour gérer les organisations liées aux utilisateurs
 class Organisation(models.Model):
@@ -100,6 +110,22 @@ class Organisation(models.Model):
 
     def __str__(self):
         return self.name
+
+    def get_members(self):
+        """Tous les membres de l'organisation."""
+        return self.members.all()
+
+    def get_agents(self):
+        """Agents de terrain de l'organisation."""
+        return self.members.filter(org_role=ORG_ROLE_FIELD)
+
+    def get_bureau_agents(self):
+        """Agents de bureau de l'organisation."""
+        return self.members.filter(org_role=ORG_ROLE_BUREAU)
+
+    def get_admins(self):
+        """Admins de l'organisation."""
+        return self.members.filter(org_role=ORG_ROLE_ADMIN)
 
 # Creation du model User pour les utilisateurs de l'application pour securiser l'entree des commandes
 
@@ -200,6 +226,21 @@ class User(AbstractBaseUser, PermissionsMixin):
                                    on_delete=models.CASCADE, null=True, blank=True)
     provider = models.CharField(_('provider'), max_length=255, blank=True, null=True)
     organisation = models.CharField(_('organisation'), max_length=255, blank=True, null=True)
+    # --- Lot 1 : lien réel vers Organisation + rôle interne ---
+    organisation_member = models.ForeignKey(
+        'Organisation', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='members',
+        help_text="Organisation à laquelle appartient l'utilisateur."
+    )
+    org_role = models.CharField(
+        max_length=20, choices=ORG_ROLES,
+        null=True, blank=True,
+        help_text="Rôle interne dans l'organisation (org_admin, bureau_agent, field_agent)."
+    )
+    agent_code = models.CharField(
+        max_length=10, unique=True, null=True, blank=True,
+        help_text="Code auto-généré pour la connexion des agents de terrain."
+    )
     points = models.IntegerField(null=True, blank=True, default=0)
     zones = models.ManyToManyField('Zone', blank=True)
     verification_token = models.UUIDField(default=uuid.uuid4, editable=False, null=True, blank=True)
@@ -211,6 +252,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     USERNAME_FIELD = 'email'
     # these field are required on registering
     REQUIRED_FIELDS = ['first_name', 'last_name']
+    is_deleted = models.BooleanField(default=False,
+                                     help_text="Si True, l'utilisateur a été supprimé (corbeille).")
 
     class Meta:
         verbose_name = _('user')
@@ -261,6 +304,42 @@ class User(AbstractBaseUser, PermissionsMixin):
         
         return True
 
+    def generate_agent_code(self):
+        """Génère un code unique pour un agent de terrain."""
+        import string
+        while True:
+            code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+            if not User.objects.filter(agent_code=code).exists():
+                self.agent_code = code
+                self.save(update_fields=['agent_code'])
+                return code
+
+
+class FieldReport(models.Model):
+    """Rapport de déplacement d'un agent de terrain sur le lieu d'un incident."""
+    agent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='field_reports')
+    incident = models.ForeignKey('Incident', on_delete=models.CASCADE, related_name='field_reports')
+    location_lat = models.CharField(max_length=250, blank=True, null=True,
+                                    help_text="Latitude réelle de l'agent lors du déplacement.")
+    location_lon = models.CharField(max_length=250, blank=True, null=True,
+                                    help_text="Longitude réelle de l'agent lors du déplacement.")
+    distance_meters = models.FloatField(null=True, blank=True,
+                                        help_text="Distance estimée entre l'agent et le lieu de l'incident (m).")
+    notes = models.TextField(max_length=1000, blank=True, null=True,
+                             help_text="Observations de l'agent sur l'état des lieux.")
+    photo = models.ImageField(upload_to='field_reports/',
+                              storage=ImageStorage(),
+                              null=True, blank=True)
+    visited_at = models.DateTimeField(default=timezone.now,
+                                      help_text="Date et heure du déplacement.")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Rapport terrain - {self.agent} sur {self.incident} ({self.visited_at:%d/%m/%Y})"
+
+    class Meta:
+        ordering = ('-visited_at',)
+
 class Incident(models.Model):
     title = models.CharField(max_length=250, blank=True,
                              null=True)
@@ -300,6 +379,10 @@ class Incident(models.Model):
                                            help_text="Date de fin de la résolution. Obligatoire à la clôture.")
     progress = models.PositiveSmallIntegerField(default=0,
                                                 help_text="Progression auto-calculée (0-100) selon avancement des tâches.")
+    is_public = models.BooleanField(default=True,
+                                     help_text="Si False, l'incident n'est visible que par l'organisation de l'agent.")
+    is_deleted = models.BooleanField(default=False,
+                                     help_text="Si True, l'incident a été supprimé (corbeille).")
 
     def __str__(self):
         return self.zone + ' '
@@ -333,6 +416,13 @@ class Incident(models.Model):
     def can_suggest_partner(self):
         """Une suggestion ne peut être faite qu'avant la clôture."""
         return not self.is_resolved
+
+    @property
+    def reported_by_agent(self):
+        """True si l'incident a été reporté par un agent de terrain."""
+        if self.user_id and hasattr(self.user_id, 'org_role'):
+            return self.user_id.org_role == 'field_agent'
+        return False
 
 
 class Evenement(models.Model):

@@ -64,6 +64,9 @@ jobs:
             echo "EMAIL_HOST=${{ secrets.EMAIL_HOST }}"
             echo "EMAIL_HOST_USER=${{ secrets.EMAIL_HOST_USER }}"
             echo "EMAIL_HOST_PASSWORD=${{ secrets.EMAIL_HOST_PASSWORD }}"
+            echo "ORANGE_CLIENT_ID=${{ secrets.ORANGE_CLIENT_ID }}"
+            echo "ORANGE_CLIENT_SECRET=${{ secrets.ORANGE_CLIENT_SECRET }}"
+            echo "ORANGE_SENDER_ADDRESS=${{ secrets.ORANGE_SENDER_ADDRESS }}"
           } > .env
 
       - name: Build and Deploy Docker Image
