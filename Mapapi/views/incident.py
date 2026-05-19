@@ -19,9 +19,11 @@ from drf_spectacular.utils import extend_schema
 from ..serializer import *
 from ..models import (
     Collaboration, COLLAB_ROLE_LEADER, RESOLVED, TASK_DONE, TASK_FAILED,
+    ORG_ROLE_FIELD, ORG_ROLE_ADMIN, ORG_ROLE_BUREAU,
 )
-from ..permissions import IsIncidentLeader
+from ..permissions import IsIncidentLeader, IsSuperAdminOrOrgOwnIncident, IsSuperAdmin
 from .common import CustomPageNumberPagination
+from rest_framework_simplejwt.tokens import RefreshToken
 
 
 @extend_schema(
@@ -99,7 +101,14 @@ class IncidentAPIView(generics.CreateAPIView):
             item = Incident.objects.get(pk=id)
         except Incident.DoesNotExist:
             return Response(status=404)
-        item.delete()
+        
+        # Vérifier les permissions: Super Admin (tous) ou Organisation (ses incidents seulement)
+        permission = IsSuperAdminOrOrgOwnIncident()
+        if not permission.has_object_permission(request, self, item):
+            return Response({"error": permission.message}, status=403)
+        
+        item.is_deleted = True
+        item.save(update_fields=['is_deleted'])
         return Response(status=204)
 
 @extend_schema(
@@ -190,6 +199,128 @@ class MyIncidentsView(generics.ListAPIView):
             .select_related('user_id', 'category_id')
             .order_by('-created_at')
         )
+
+
+@extend_schema(
+    description="Incidents de l'organisation. Filtre ?source=agents|citizens|all (défaut: all).",
+    responses={200: IncidentGetSerializer(many=True)},
+)
+class OrgIncidentsView(generics.ListAPIView):
+    """GET /org-incidents/ — incidents liés à l'organisation de l'utilisateur.
+
+    ?source=agents  → incidents reportés par les agents de terrain de l'org
+    ?source=citizens → incidents reportés par les citoyens (tous les autres)
+    ?source=all (défaut) → tous
+    """
+    permission_classes = [IsAuthenticated]
+    serializer_class = IncidentGetSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        org = user.organisation_member
+
+        if not org:
+            return Incident.objects.none()
+
+        source = self.request.query_params.get('source', 'all')
+        # IDs des agents de terrain de l'org
+        agent_ids = org.members.filter(org_role=ORG_ROLE_FIELD).values_list('id', flat=True)
+
+        qs = Incident.objects.select_related('user_id', 'category_id')
+
+        if source == 'agents':
+            qs = qs.filter(user_id__in=agent_ids)
+        elif source == 'citizens':
+            qs = qs.exclude(user_id__in=agent_ids)
+        # source == 'all' : pas de filtre supplémentaire
+
+        return qs.order_by('-created_at')
+
+
+@extend_schema(
+    description="Connexion d'un agent de terrain via son code agent.",
+    request={'application/json': {'type': 'object', 'properties': {'agent_code': {'type': 'string'}}}},
+    responses={200: 'Tokens JWT'},
+)
+class AgentCodeLoginView(APIView):
+    """POST /agent-login/ — login par agent_code, retourne des tokens JWT."""
+    permission_classes = []
+
+    def post(self, request):
+        agent_code = request.data.get('agent_code')
+        if not agent_code:
+            return Response(
+                {"error": "agent_code est requis."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user = User.objects.get(agent_code=agent_code, org_role=ORG_ROLE_FIELD)
+        except User.DoesNotExist:
+            return Response(
+                {"error": "Code agent invalide."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        if not user.is_active:
+            return Response(
+                {"error": "Ce compte est désactivé."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "org_role": user.org_role,
+                "agent_code": user.agent_code,
+                "organisation": user.organisation_member.name if user.organisation_member else None,
+            },
+        }, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    description="Basculer la visibilité publique d'un incident (is_public).",
+    responses={200: IncidentSerializer},
+)
+class ToggleIncidentPublicView(APIView):
+    """POST /incidents/<incident_id>/toggle-public/ — bascule is_public."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, incident_id):
+        try:
+            incident = Incident.objects.get(pk=incident_id)
+        except Incident.DoesNotExist:
+            return Response({"error": "Incident non trouvé."}, status=status.HTTP_404_NOT_FOUND)
+
+        user = request.user
+        # Seul l'admin/bureau de l'org du reporter ou le leader peut basculer
+        reporter = incident.user_id
+        if reporter and reporter.organisation_member and user.organisation_member == reporter.organisation_member:
+            if user.org_role not in [ORG_ROLE_ADMIN, ORG_ROLE_BUREAU]:
+                return Response(
+                    {"error": "Seul un admin ou agent de bureau peut modifier la visibilité."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        elif not user.is_staff:
+            return Response(
+                {"error": "Vous n'avez pas les droits sur cet incident."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        incident.is_public = not incident.is_public
+        incident.save(update_fields=['is_public'])
+
+        return Response({
+            "status": "success",
+            "is_public": incident.is_public,
+            "message": f"Incident {'rendu public' if incident.is_public else 'rendu privé'}.",
+        }, status=status.HTTP_200_OK)
 
 
 @extend_schema(
@@ -578,10 +709,38 @@ class CloseIncidentView(APIView):
         incident.resolution_start_date = resolution_start
         incident.resolution_end_date = resolution_end
         incident.save()
-
         serializer = IncidentSerializer(incident)
-        return Response({
-            "status": "success",
-            "message": f"Incident {incident_id} clôturé.",
-            "data": serializer.data,
-        }, status=status.HTTP_200_OK)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    description="Lister les incidents supprimés (corbeille). Super Admin uniquement.",
+    responses={200: IncidentGetSerializer(many=True)},
+)
+class TrashIncidentsView(generics.ListAPIView):
+    """GET /incidents/trash/ — liste des incidents supprimés (is_deleted=True)."""
+    permission_classes = [IsAuthenticated, IsSuperAdmin]
+    serializer_class = IncidentGetSerializer
+
+    def get_queryset(self):
+        return Incident.objects.filter(is_deleted=True).select_related('user_id', 'category_id').order_by('-created_at')
+
+
+@extend_schema(
+    description="Restaurer un incident supprimé (corbeille). Super Admin uniquement.",
+    responses={200: IncidentGetSerializer},
+)
+class RestoreIncidentView(APIView):
+    """POST /incidents/<incident_id>/restore/ — restaurer un incident supprimé."""
+    permission_classes = [IsAuthenticated, IsSuperAdmin]
+
+    def post(self, request, incident_id):
+        try:
+            incident = Incident.objects.get(pk=incident_id, is_deleted=True)
+        except Incident.DoesNotExist:
+            return Response({"error": "Incident non trouvé dans la corbeille."}, status=status.HTTP_404_NOT_FOUND)
+
+        incident.is_deleted = False
+        incident.save(update_fields=['is_deleted'])
+        serializer = IncidentGetSerializer(incident)
+        return Response(serializer.data, status=status.HTTP_200_OK)

@@ -11,9 +11,28 @@ from django.utils import timezone
 
 
 class OrganisationSerializer(serializers.ModelSerializer):
+    members_count = serializers.SerializerMethodField(read_only=True)
+
     class Meta:
         model = Organisation
         fields = '__all__'
+
+    def get_members_count(self, obj):
+        return obj.members.count()
+
+
+class OrganisationMemberSerializer(serializers.ModelSerializer):
+    """Serializer pour la gestion des membres d'une organisation."""
+    organisation_name = serializers.CharField(source='organisation_member.name', read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'email', 'first_name', 'last_name', 'phone',
+            'organisation_member', 'organisation_name', 'org_role',
+            'agent_code', 'is_active', 'date_joined',
+        ]
+        read_only_fields = ('id', 'email', 'date_joined', 'agent_code')
 
 class UserRegisterSerializer(serializers.ModelSerializer):
     class Meta:
@@ -40,6 +59,9 @@ class UserSerializer(ModelSerializer):
         child=serializers.CharField(),
         write_only=True,
         required=False
+    )
+    organisation_name = serializers.CharField(
+        source='organisation_member.name', read_only=True
     )
 
     class Meta:
@@ -334,6 +356,40 @@ class CollaborationSerializer(ModelSerializer):
             )
         return data
 
+
+class CollaborationEnrichedSerializer(ModelSerializer):
+    """Serializer enrichi pour la vue collaboration dashboard."""
+    organisation_name = serializers.SerializerMethodField()
+    user_role = serializers.CharField(source='role', read_only=True)
+    incident_title = serializers.CharField(source='incident.title', read_only=True)
+    incident_description = serializers.CharField(source='incident.description', read_only=True)
+    incident_zone = serializers.CharField(source='incident.zone', read_only=True)
+    incident_etat = serializers.CharField(source='incident.etat', read_only=True)
+    incident_progress = serializers.IntegerField(source='incident.progress', read_only=True)
+    start_date = serializers.DateTimeField(source='created_at', read_only=True)
+    participants_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Collaboration
+        fields = [
+            'id', 'incident', 'user', 'status', 'role',
+            'organisation_name', 'user_role',
+            'incident_title', 'incident_description', 'incident_zone',
+            'incident_etat', 'incident_progress',
+            'start_date', 'end_date',
+            'participants_count', 'motivation',
+        ]
+
+    def get_organisation_name(self, obj):
+        if obj.user and obj.user.organisation_member:
+            return obj.user.organisation_member.name
+        return obj.user.organisation if obj.user else None
+
+    def get_participants_count(self, obj):
+        return Collaboration.objects.filter(
+            incident=obj.incident, status='accepted'
+        ).count()
+
 class ColaborationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Colaboration
@@ -359,7 +415,60 @@ class ChatHistorySerializer(serializers.ModelSerializer):
 class UserActionSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserAction
-        fields = '__all__' 
+        fields = '__all__'
+
+
+class FieldReportSerializer(ModelSerializer):
+    agent_name = serializers.CharField(source='agent.get_full_name', read_only=True)
+    incident_title = serializers.CharField(source='incident.title', read_only=True)
+    incident_zone = serializers.CharField(source='incident.zone', read_only=True)
+
+    class Meta:
+        model = FieldReport
+        fields = '__all__'
+        read_only_fields = ('agent', 'incident', 'visited_at', 'created_at')
+
+    def validate(self, data):
+        # Vérifier que l'utilisateur est bien un agent de terrain
+        agent = data.get('agent') or self.instance.agent if self.instance else None
+        if agent and agent.org_role != ORG_ROLE_FIELD:
+            raise serializers.ValidationError("Seuls les agents de terrain peuvent créer des rapports de déplacement.")
+
+        # Calcul de la distance approximative entre l'emplacement rapporté et l'incident
+        incident = data.get('incident') or self.instance.incident if self.instance else None
+        if incident:
+            try:
+                import math
+                # Coordonnées de l'incident (si disponibles)
+                inc_lat = float(incident.lattitude) if incident.lattitude else None
+                inc_lon = float(incident.longitude) if incident.longitude else None
+
+                # Coordonnées rapportées par l'agent
+                agent_lat = float(data.get('location_lat')) if data.get('location_lat') else None
+                agent_lon = float(data.get('location_lon')) if data.get('location_lon') else None
+
+                if all([inc_lat, inc_lon, agent_lat, agent_lon]):
+                    # Formule de Haversine pour calculer la distance
+                    lat1, lon1, lat2, lon2 = map(math.radians, [inc_lat, inc_lon, agent_lat, agent_lon])
+                    dlat = lat2 - lat1
+                    dlon = lon2 - lon1
+                    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+                    c = 2 * math.asin(math.sqrt(a))
+                    distance_km = 6371 * c  # Rayon de la Terre en km
+                    distance_meters = distance_km * 1000
+
+                    # Validation : l'agent doit être à moins de 100m de l'incident
+                    if distance_meters > 100:
+                        raise serializers.ValidationError(
+                            f"Vous devez être sur le lieu de l'incident (distance calculée: {distance_meters:.0f}m)."
+                        )
+
+                    data['distance_meters'] = distance_meters
+            except (ValueError, TypeError):
+                # Si les coordonnées ne sont pas disponibles, on ne peut pas valider la distance
+                pass
+
+        return data
 
 
 class DiscussionMessageSerializer(serializers.ModelSerializer):
