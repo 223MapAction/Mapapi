@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 
 from drf_spectacular.utils import extend_schema
 
-from ..models import Collaboration, Notification, COLLAB_ROLE_LEADER
+from ..models import Collaboration, Incident, Notification, COLLAB_ROLE_LEADER
 from ..serializer import CollaborationSerializer, CollaborationEnrichedSerializer
 from ..Send_mails import send_email
 from .common import CustomPageNumberPagination
@@ -105,6 +105,49 @@ class CollaborationView(generics.CreateAPIView, generics.ListAPIView):
                 status=status.HTTP_201_CREATED,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class BulkCollaborationRequestView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        requests_data = request.data.get('requests', [])
+        if not isinstance(requests_data, list) or not requests_data:
+            return Response({"error": "requests doit être une liste non vide."}, status=status.HTTP_400_BAD_REQUEST)
+
+        created = []
+        errors = []
+
+        for index, item in enumerate(requests_data):
+            incident_id = item.get('incident_id') or item.get('incident')
+            if not incident_id:
+                errors.append({"index": index, "error": "incident_id est requis."})
+                continue
+
+            try:
+                Incident.objects.get(pk=incident_id)
+            except Incident.DoesNotExist:
+                errors.append({"index": index, "incident_id": incident_id, "error": "Incident non trouvé."})
+                continue
+
+            data = {
+                "incident": incident_id,
+                "role": item.get('role'),
+                "motivation": item.get('motivation'),
+                "end_date": item.get('end_date'),
+            }
+            serializer = CollaborationSerializer(data=data)
+            if serializer.is_valid():
+                collaboration = serializer.save(user=request.user, status='pending')
+                created.append(CollaborationSerializer(collaboration).data)
+            else:
+                errors.append({"index": index, "incident_id": incident_id, "errors": serializer.errors})
+
+        return Response({
+            "created": created,
+            "errors": errors,
+            "message": f"{len(created)} demande(s) de collaboration créée(s)."
+        }, status=status.HTTP_207_MULTI_STATUS if errors else status.HTTP_201_CREATED)
 
 
 class HandleCollaborationRequestView(APIView):

@@ -418,6 +418,41 @@ class UserActionSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class IncidentAssignmentSerializer(serializers.ModelSerializer):
+    agent_name = serializers.CharField(source='agent.get_full_name', read_only=True)
+    agent_email = serializers.EmailField(source='agent.email', read_only=True)
+    incident_title = serializers.CharField(source='incident.title', read_only=True)
+    assigned_by_name = serializers.CharField(source='assigned_by.get_full_name', read_only=True)
+
+    class Meta:
+        model = IncidentAssignment
+        fields = '__all__'
+        read_only_fields = ('assigned_by', 'created_at', 'updated_at')
+
+    def validate(self, data):
+        agent = data.get('agent') or (self.instance.agent if self.instance else None)
+        incident = data.get('incident') or (self.instance.incident if self.instance else None)
+        deadline = data.get('deadline') or (self.instance.deadline if self.instance else None)
+
+        if not deadline:
+            raise serializers.ValidationError("La deadline est obligatoire.")
+
+        if agent and agent.org_role != ORG_ROLE_FIELD:
+            raise serializers.ValidationError("L'utilisateur assigné doit être un agent de terrain.")
+
+        if agent and incident and agent.organisation_member:
+            incident_owner_org = None
+            if incident.user_id and incident.user_id.organisation_member:
+                incident_owner_org = incident.user_id.organisation_member
+            elif incident.taken_by and incident.taken_by.organisation_member:
+                incident_owner_org = incident.taken_by.organisation_member
+
+            if incident_owner_org and agent.organisation_member != incident_owner_org:
+                raise serializers.ValidationError("L'agent doit appartenir à l'organisation liée à l'incident.")
+
+        return data
+
+
 class FieldReportSerializer(ModelSerializer):
     agent_name = serializers.CharField(source='agent.get_full_name', read_only=True)
     incident_title = serializers.CharField(source='incident.title', read_only=True)
@@ -429,26 +464,25 @@ class FieldReportSerializer(ModelSerializer):
         read_only_fields = ('agent', 'incident', 'visited_at', 'created_at')
 
     def validate(self, data):
-        # Vérifier que l'utilisateur est bien un agent de terrain
-        agent = data.get('agent') or self.instance.agent if self.instance else None
+        request = self.context.get('request')
+        agent = data.get('agent') or (self.instance.agent if self.instance else None) or (request.user if request else None)
         if agent and agent.org_role != ORG_ROLE_FIELD:
             raise serializers.ValidationError("Seuls les agents de terrain peuvent créer des rapports de déplacement.")
 
-        # Calcul de la distance approximative entre l'emplacement rapporté et l'incident
-        incident = data.get('incident') or self.instance.incident if self.instance else None
+        incident = data.get('incident') or (self.instance.incident if self.instance else None)
         if incident:
+            if agent and not IncidentAssignment.objects.filter(incident=incident, agent=agent).exists():
+                raise serializers.ValidationError("Vous ne pouvez créer un rapport que pour un incident qui vous est assigné.")
+
             try:
                 import math
-                # Coordonnées de l'incident (si disponibles)
                 inc_lat = float(incident.lattitude) if incident.lattitude else None
                 inc_lon = float(incident.longitude) if incident.longitude else None
 
-                # Coordonnées rapportées par l'agent
                 agent_lat = float(data.get('location_lat')) if data.get('location_lat') else None
                 agent_lon = float(data.get('location_lon')) if data.get('location_lon') else None
 
                 if all([inc_lat, inc_lon, agent_lat, agent_lon]):
-                    # Formule de Haversine pour calculer la distance
                     lat1, lon1, lat2, lon2 = map(math.radians, [inc_lat, inc_lon, agent_lat, agent_lon])
                     dlat = lat2 - lat1
                     dlon = lon2 - lon1

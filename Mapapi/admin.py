@@ -4,7 +4,7 @@ from .models import (
     User, Organisation, Incident, Collaboration, DiscussionMessage,
     IncidentTask, PartnerSuggestion, Category, Indicateur, Zone,
     Message, ResponseMessage, Evenement, Communaute, Rapport,
-    Notification, FieldReport, PasswordReset, PhoneOTP
+    Notification, FieldReport, IncidentAssignment, PasswordReset, PhoneOTP
 )
 
 
@@ -62,7 +62,7 @@ class UserAdmin(admin.ModelAdmin):
             'fields': ('password', 'agent_code', 'otp', 'otp_expiration')
         }),
         ('Vérification', {
-            'fields': ('verification_token', 'verification_token_expiration')
+            'fields': ('verification_token',)
         }),
         ('Métadonnées', {
             'fields': ('date_joined', 'is_deleted')
@@ -72,8 +72,9 @@ class UserAdmin(admin.ModelAdmin):
 
 @admin.register(Organisation)
 class OrganisationAdmin(admin.ModelAdmin):
-    list_display = ['name', 'created_at']
-    search_fields = ['name']
+    list_display = ['name', 'acronym', 'organisation_type', 'activity_sector', 'intervention_country', 'partner_status', 'created_at']
+    list_filter = ['organisation_type', 'activity_sector', 'intervention_country', 'partner_status', 'is_premium']
+    search_fields = ['name', 'acronym', 'description', 'phone', 'website_url']
     readonly_fields = ['created_at']
 
 
@@ -211,6 +212,14 @@ class FieldReportAdmin(admin.ModelAdmin):
     list_filter = ['visited_at', 'created_at']
     search_fields = ['incident__title', 'agent__email']
     readonly_fields = ['created_at']
+
+
+@admin.register(IncidentAssignment)
+class IncidentAssignmentAdmin(admin.ModelAdmin):
+    list_display = ['id', 'incident', 'agent', 'assigned_by', 'deadline', 'status', 'created_at']
+    list_filter = ['status', 'deadline', 'created_at']
+    search_fields = ['incident__title', 'agent__email', 'assigned_by__email']
+    readonly_fields = ['created_at', 'updated_at']
 
 
 @admin.register(PasswordReset)
