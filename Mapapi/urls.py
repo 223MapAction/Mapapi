@@ -12,7 +12,12 @@ from .views.incident import (
     TakeInChargeView, CloseIncidentView, MyIncidentsView,
     OrgIncidentsView, AgentCodeLoginView, ToggleIncidentPublicView,
     TrashIncidentsView, RestoreIncidentView,
+    IncidentAssignmentListCreateView, IncidentAssignmentDetailView,
+    AgentAssignedIncidentsView, FieldReportListCreateView,
+    BulkDeleteIncidentsView, BulkRestoreIncidentsView,
+    BulkForceDeleteIncidentsView,
 )
+from .views.collaboration import BulkCollaborationRequestView
 from .views.organisation import (
     OrganisationMemberListView, OrganisationMemberCreateView,
     OrganisationMemberDetailView,
@@ -74,6 +79,8 @@ urlpatterns = [
     path('incident-filter/', IncidentFilterView.as_view(), name='incident_filter'),
     path('my-incidents/', MyIncidentsView.as_view(), name='my-incidents'),
     path('org-incidents/', OrgIncidentsView.as_view(), name='org-incidents'),
+    path('agent/assigned-incidents/', AgentAssignedIncidentsView.as_view(), name='agent-assigned-incidents'),
+    path('field-reports/', FieldReportListCreateView.as_view(), name='field-reports'),
     path('agent-login/', AgentCodeLoginView.as_view(), name='agent-login'),
     # URL for views Events
     path('Event/<int:id>', EvenementAPIView.as_view(), name='event'),
@@ -131,6 +138,7 @@ urlpatterns = [
     path('verify_otp/', PhoneOTPView.as_view(), name="verify_otp"),
     # Collaboration URL
     path('collaboration/', CollaborationView.as_view(), name='collaboration'),
+    path('collaborations/bulk-request/', BulkCollaborationRequestView.as_view(), name='bulk-collaboration-request'),
     path('collaborations/dashboard/', CollaborationDashboardView.as_view(), name='collaboration-dashboard'),
     path('accept-collaboration/', AcceptCollaborationView.as_view(), name='accept-collaboration'),
     path('decline/', DeclineCollaborationView.as_view(), name='decline-collaboration'),
@@ -183,6 +191,11 @@ urlpatterns = [
     path('incidents/<int:incident_id>/take_in_charge/', TakeInChargeView.as_view(), name='incident-take-in-charge'),
     path('incidents/<int:incident_id>/close/', CloseIncidentView.as_view(), name='incident-close'),
     path('incidents/<int:incident_id>/toggle-public/', ToggleIncidentPublicView.as_view(), name='incident-toggle-public'),
+    path('incidents/<int:incident_id>/assignments/', IncidentAssignmentListCreateView.as_view(), name='incident-assignment-list'),
+    path('incidents/<int:incident_id>/assignments/<int:pk>/', IncidentAssignmentDetailView.as_view(), name='incident-assignment-detail'),
+    path('incidents/bulk-delete/', BulkDeleteIncidentsView.as_view(), name='incident-bulk-delete'),
+    path('incidents/bulk-restore/', BulkRestoreIncidentsView.as_view(), name='incident-bulk-restore'),
+    path('incidents/bulk-force-delete/', BulkForceDeleteIncidentsView.as_view(), name='incident-bulk-force-delete'),
 
     # --- Corbeille (Super Admin uniquement) ---
     path('incidents/trash/', TrashIncidentsView.as_view(), name='incident-trash'),

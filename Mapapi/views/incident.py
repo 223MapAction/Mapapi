@@ -237,6 +237,120 @@ class OrgIncidentsView(generics.ListAPIView):
         return qs.order_by('-created_at')
 
 
+class IncidentAssignmentListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = IncidentAssignmentSerializer
+
+    def get_queryset(self):
+        return IncidentAssignment.objects.filter(
+            incident_id=self.kwargs['incident_id']
+        ).select_related('incident', 'agent', 'assigned_by').order_by('deadline', '-created_at')
+
+    def list(self, request, *args, **kwargs):
+        try:
+            incident = Incident.objects.get(pk=self.kwargs['incident_id'])
+        except Incident.DoesNotExist:
+            return Response({"error": "Incident non trouvé."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not self._can_manage_assignment(request.user, incident):
+            return Response({"error": "Droits insuffisants."}, status=status.HTTP_403_FORBIDDEN)
+
+        return super().list(request, *args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        try:
+            incident = Incident.objects.get(pk=self.kwargs['incident_id'])
+        except Incident.DoesNotExist:
+            return Response({"error": "Incident non trouvé."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not self._can_manage_assignment(request.user, incident):
+            return Response({"error": "Droits insuffisants."}, status=status.HTTP_403_FORBIDDEN)
+
+        data = request.data.copy()
+        data['incident'] = incident.id
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(assigned_by=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def _can_manage_assignment(user, incident):
+        if user.is_staff or user.is_superuser:
+            return True
+        if user.org_role not in [ORG_ROLE_ADMIN, ORG_ROLE_BUREAU]:
+            return False
+        if not user.organisation_member:
+            return False
+        if incident.user_id and incident.user_id.organisation_member == user.organisation_member:
+            return True
+        if incident.taken_by and incident.taken_by.organisation_member == user.organisation_member:
+            return True
+        return False
+
+
+class IncidentAssignmentDetailView(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = IncidentAssignmentSerializer
+
+    def get_queryset(self):
+        return IncidentAssignment.objects.filter(
+            incident_id=self.kwargs['incident_id']
+        ).select_related('incident', 'agent', 'assigned_by')
+
+    def get_object(self):
+        obj = super().get_object()
+        if not IncidentAssignmentListCreateView._can_manage_assignment(self.request.user, obj.incident):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Droits insuffisants.")
+        return obj
+
+
+class AgentAssignedIncidentsView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = IncidentAssignmentSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.org_role != ORG_ROLE_FIELD:
+            return IncidentAssignment.objects.none()
+        return IncidentAssignment.objects.filter(agent=user).select_related('incident', 'agent', 'assigned_by')
+
+
+class FieldReportListCreateView(generics.ListCreateAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = FieldReportSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = FieldReport.objects.select_related('incident', 'agent').order_by('-visited_at')
+        if user.is_staff or user.is_superuser:
+            return qs
+        if user.org_role == ORG_ROLE_FIELD:
+            return qs.filter(agent=user)
+        if user.organisation_member:
+            return qs.filter(agent__organisation_member=user.organisation_member)
+        return FieldReport.objects.none()
+
+    def create(self, request, *args, **kwargs):
+        incident_id = request.data.get('incident') or request.data.get('incident_id')
+        try:
+            incident = Incident.objects.get(pk=incident_id)
+        except Incident.DoesNotExist:
+            return Response({"error": "Incident non trouvé."}, status=status.HTTP_404_NOT_FOUND)
+
+        if request.user.org_role != ORG_ROLE_FIELD:
+            return Response({"error": "Seuls les agents de terrain peuvent créer des rapports."}, status=status.HTTP_403_FORBIDDEN)
+
+        if not IncidentAssignment.objects.filter(incident=incident, agent=request.user).exists():
+            return Response({"error": "Cet incident ne vous est pas assigné."}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(agent=request.user, incident=incident)
+        IncidentAssignment.objects.filter(incident=incident, agent=request.user).update(status=ASSIGNMENT_REPORTED)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
 @extend_schema(
     description="Connexion d'un agent de terrain via son code agent.",
     request={'application/json': {'type': 'object', 'properties': {'agent_code': {'type': 'string'}}}},
@@ -711,6 +825,100 @@ class CloseIncidentView(APIView):
         incident.save()
         serializer = IncidentSerializer(incident)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class BulkDeleteIncidentsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        incident_ids = request.data.get('incident_ids', [])
+        if not isinstance(incident_ids, list) or not incident_ids:
+            return Response({"error": "incident_ids doit être une liste non vide."}, status=status.HTTP_400_BAD_REQUEST)
+
+        deleted_ids = []
+        unauthorized_ids = []
+        not_found_ids = []
+        permission = IsSuperAdminOrOrgOwnIncident()
+
+        for incident_id in incident_ids:
+            try:
+                incident = Incident.objects.get(pk=incident_id)
+            except Incident.DoesNotExist:
+                not_found_ids.append(incident_id)
+                continue
+
+            if not permission.has_object_permission(request, self, incident):
+                unauthorized_ids.append(incident_id)
+                continue
+
+            if not incident.is_deleted:
+                incident.is_deleted = True
+                incident.save(update_fields=['is_deleted'])
+            deleted_ids.append(incident_id)
+
+        return Response({
+            "deleted_ids": deleted_ids,
+            "unauthorized_ids": unauthorized_ids,
+            "not_found_ids": not_found_ids,
+            "message": f"{len(deleted_ids)} incident(s) supprimé(s)."
+        }, status=status.HTTP_200_OK)
+
+
+class BulkRestoreIncidentsView(APIView):
+    permission_classes = [IsAuthenticated, IsSuperAdmin]
+
+    def post(self, request):
+        incident_ids = request.data.get('incident_ids', [])
+        if not isinstance(incident_ids, list) or not incident_ids:
+            return Response({"error": "incident_ids doit être une liste non vide."}, status=status.HTTP_400_BAD_REQUEST)
+
+        restored_ids = []
+        not_found_ids = []
+
+        for incident_id in incident_ids:
+            try:
+                incident = Incident.objects.get(pk=incident_id, is_deleted=True)
+            except Incident.DoesNotExist:
+                not_found_ids.append(incident_id)
+                continue
+
+            incident.is_deleted = False
+            incident.save(update_fields=['is_deleted'])
+            restored_ids.append(incident_id)
+
+        return Response({
+            "restored_ids": restored_ids,
+            "not_found_ids": not_found_ids,
+            "message": f"{len(restored_ids)} incident(s) restauré(s)."
+        }, status=status.HTTP_200_OK)
+
+
+class BulkForceDeleteIncidentsView(APIView):
+    permission_classes = [IsAuthenticated, IsSuperAdmin]
+
+    def post(self, request):
+        incident_ids = request.data.get('incident_ids', [])
+        if not isinstance(incident_ids, list) or not incident_ids:
+            return Response({"error": "incident_ids doit être une liste non vide."}, status=status.HTTP_400_BAD_REQUEST)
+
+        deleted_ids = []
+        not_found_ids = []
+
+        for incident_id in incident_ids:
+            try:
+                incident = Incident.objects.get(pk=incident_id, is_deleted=True)
+            except Incident.DoesNotExist:
+                not_found_ids.append(incident_id)
+                continue
+
+            incident.delete()
+            deleted_ids.append(incident_id)
+
+        return Response({
+            "deleted_ids": deleted_ids,
+            "not_found_ids": not_found_ids,
+            "message": f"{len(deleted_ids)} incident(s) supprimé(s) définitivement."
+        }, status=status.HTTP_200_OK)
 
 
 @extend_schema(

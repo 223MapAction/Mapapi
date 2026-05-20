@@ -96,13 +96,84 @@ ORG_ROLES = (
     (ORG_ROLE_FIELD, 'Agent de terrain'),
 )
 
+ORG_SECTOR_HUMANITARIAN = 'humanitarian'
+ORG_SECTOR_HUMANITARIAN_COORDINATION = 'humanitarian_coordination'
+ORG_SECTOR_DEVELOPMENT = 'development'
+ORG_SECTOR_CHILD_PROTECTION = 'child_protection'
+ORG_SECTOR_HEALTH = 'health'
+ORG_SECTOR_NUTRITION_FOOD_SECURITY = 'nutrition_food_security'
+ORG_SECTOR_DEVELOPMENT_HUMANITARIAN = 'development_humanitarian'
+ORG_ACTIVITY_SECTORS = (
+    (ORG_SECTOR_HUMANITARIAN, 'Humanitaire'),
+    (ORG_SECTOR_HUMANITARIAN_COORDINATION, 'Coordination humanitaire'),
+    (ORG_SECTOR_DEVELOPMENT, 'Développement'),
+    (ORG_SECTOR_CHILD_PROTECTION, "Protection de l'enfance"),
+    (ORG_SECTOR_HEALTH, 'Santé'),
+    (ORG_SECTOR_NUTRITION_FOOD_SECURITY, 'Nutrition et sécurité alimentaire'),
+    (ORG_SECTOR_DEVELOPMENT_HUMANITARIAN, 'Développement et humanitaire'),
+)
+
+ORG_TYPE_NGO = 'ngo'
+ORG_TYPE_INTERNATIONAL = 'international_organisation'
+ORG_TYPE_GOVERNMENTAL = 'governmental'
+ORG_TYPE_CIVIL_SOCIETY = 'civil_society'
+ORG_TYPES = (
+    (ORG_TYPE_NGO, 'ONG'),
+    (ORG_TYPE_INTERNATIONAL, 'Organisation internationale'),
+    (ORG_TYPE_GOVERNMENTAL, 'Gouvernementale'),
+    (ORG_TYPE_CIVIL_SOCIETY, 'Société civile'),
+)
+
+COUNTRY_SENEGAL = 'senegal'
+COUNTRY_MALI = 'mali'
+COUNTRY_GUINEA = 'guinea'
+COUNTRY_BURKINA_FASO = 'burkina_faso'
+COUNTRY_NIGER = 'niger'
+COUNTRY_COTE_DIVOIRE = 'cote_divoire'
+COUNTRY_MAURITANIA = 'mauritania'
+INTERVENTION_COUNTRIES = (
+    (COUNTRY_SENEGAL, 'Sénégal'),
+    (COUNTRY_MALI, 'Mali'),
+    (COUNTRY_GUINEA, 'Guinée'),
+    (COUNTRY_BURKINA_FASO, 'Burkina Faso'),
+    (COUNTRY_NIGER, 'Niger'),
+    (COUNTRY_COTE_DIVOIRE, "Côte d’Ivoire"),
+    (COUNTRY_MAURITANIA, 'Mauritanie'),
+)
+
+PARTNER_STATUS_ACTIVE = 'active'
+PARTNER_STATUS_INACTIVE = 'inactive'
+PARTNER_STATUSES = (
+    (PARTNER_STATUS_ACTIVE, 'Actif'),
+    (PARTNER_STATUS_INACTIVE, 'Inactif'),
+)
+
+ASSIGNMENT_PENDING = 'pending'
+ASSIGNMENT_IN_PROGRESS = 'in_progress'
+ASSIGNMENT_REPORTED = 'reported'
+ASSIGNMENT_CANCELLED = 'cancelled'
+ASSIGNMENT_STATUSES = (
+    (ASSIGNMENT_PENDING, 'En attente'),
+    (ASSIGNMENT_IN_PROGRESS, 'En cours'),
+    (ASSIGNMENT_REPORTED, 'Rapport effectué'),
+    (ASSIGNMENT_CANCELLED, 'Annulé'),
+)
+
 
 # Modèle d'organisation pour gérer les organisations liées aux utilisateurs
 class Organisation(models.Model):
     name = models.CharField(max_length=255, unique=True)
+    acronym = models.CharField(max_length=50, blank=True, null=True)
     is_premium = models.BooleanField(default=False)
     subdomain = models.CharField(max_length=255, unique=True)  # ex: wetlands
     logo_url = models.URLField(null=True, blank=True)
+    activity_sector = models.CharField(max_length=40, choices=ORG_ACTIVITY_SECTORS, blank=True, null=True)
+    organisation_type = models.CharField(max_length=40, choices=ORG_TYPES, blank=True, null=True)
+    intervention_country = models.CharField(max_length=30, choices=INTERVENTION_COUNTRIES, blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+    partner_status = models.CharField(max_length=20, choices=PARTNER_STATUSES, default=PARTNER_STATUS_ACTIVE)
+    phone = models.CharField(max_length=20, blank=True, null=True)
+    website_url = models.URLField(null=True, blank=True)
     primary_color = models.CharField(max_length=7, default="#4CAF50")  # hex
     secondary_color = models.CharField(max_length=7, default="#8BC34A")
     background_color = models.CharField(max_length=7, default="#F0F0F0")
@@ -339,6 +410,23 @@ class FieldReport(models.Model):
 
     class Meta:
         ordering = ('-visited_at',)
+
+
+class IncidentAssignment(models.Model):
+    incident = models.ForeignKey('Incident', on_delete=models.CASCADE, related_name='assignments')
+    agent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='incident_assignments')
+    assigned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_incident_assignments')
+    deadline = models.DateTimeField()
+    status = models.CharField(max_length=20, choices=ASSIGNMENT_STATUSES, default=ASSIGNMENT_PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = (("incident", "agent"),)
+        ordering = ('deadline', '-created_at')
+
+    def __str__(self):
+        return f"{self.incident} assigné à {self.agent} avant {self.deadline:%d/%m/%Y %H:%M}"
 
 class Incident(models.Model):
     title = models.CharField(max_length=250, blank=True,

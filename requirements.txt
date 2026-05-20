@@ -11,7 +11,7 @@ psycopg2==2.9.9
 asgiref==3.7.2
 pytz==2023.3.post1
 sqlparse==0.4.4
-django-allauth==0.60.0
+django-allauth==0.61.1
 python-decouple==3.8
 requests==2.31.0
 django-cors-headers==4.3.0
