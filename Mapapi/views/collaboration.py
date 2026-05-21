@@ -82,18 +82,19 @@ class CollaborationDashboardView(generics.ListAPIView):
 
 class CollaborationView(generics.CreateAPIView, generics.ListAPIView):
     """
-    GET  /collaboration/  — liste des collaborations de l'utilisateur
+    GET  /collaboration/  — liste paginée des collaborations de l'utilisateur
     POST /collaboration/  — demander à rejoindre un incident (role=contributor|observer, status=pending)
     """
     permission_classes = [IsAuthenticated]
     queryset = Collaboration.objects.all()
     serializer_class = CollaborationSerializer
+    pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
         user = self.request.user
         return Collaboration.objects.filter(
-            Q(user=user) | Q(incident__taken_by=user) 
-        )
+            Q(user=user) | Q(incident__taken_by=user)
+        ).order_by('-id')
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -105,6 +106,28 @@ class CollaborationView(generics.CreateAPIView, generics.ListAPIView):
                 status=status.HTTP_201_CREATED,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@extend_schema(
+    description=(
+        "Détail d'une collaboration. Accessible au collaborateur lui-même, "
+        "au leader de l'incident, ou à un super admin."
+    ),
+    responses={200: CollaborationSerializer, 404: "Collaboration not found"},
+)
+class CollaborationDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """GET/PATCH/DELETE /collaboration/<int:pk>/."""
+    permission_classes = [IsAuthenticated]
+    serializer_class = CollaborationSerializer
+    queryset = Collaboration.objects.all()
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_staff or user.is_superuser:
+            return Collaboration.objects.all()
+        return Collaboration.objects.filter(
+            Q(user=user) | Q(incident__taken_by=user)
+        )
 
 
 class BulkCollaborationRequestView(APIView):

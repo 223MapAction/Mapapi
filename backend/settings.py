@@ -345,3 +345,15 @@ TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER')
 ORANGE_CLIENT_ID = os.environ.get('ORANGE_CLIENT_ID')
 ORANGE_CLIENT_SECRET = os.environ.get('ORANGE_CLIENT_SECRET')
 ORANGE_SENDER_ADDRESS = os.environ.get('ORANGE_SENDER_ADDRESS')
+
+# Model-deploy service (remote AI analysis pipeline)
+MODEL_DEPLOY_ANALYZE_URL = os.environ.get(
+    'MODEL_DEPLOY_ANALYZE_URL',
+    'http://localhost:8001/api1/analyze/',
+)
+MODEL_DEPLOY_TIMEOUT = int(os.environ.get('MODEL_DEPLOY_TIMEOUT', 180))
+MODEL_DEPLOY_CHAT_URL = os.environ.get(
+    'MODEL_DEPLOY_CHAT_URL',
+    'http://localhost:8001/api1/chat',
+)
+MODEL_DEPLOY_CHAT_TIMEOUT = int(os.environ.get('MODEL_DEPLOY_CHAT_TIMEOUT', 120))

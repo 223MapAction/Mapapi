@@ -13,16 +13,17 @@ from ..models import (
 from ..serializer import PartnerSuggestionSerializer
 from ..permissions import (
     IsIncidentCollaborator, IsIncidentContributor, IsIncidentLeader,
+    IsIncidentLeaderOrContributor,
 )
 
 
 class PartnerSuggestionListCreateView(generics.ListCreateAPIView):
     """
     GET  /incidents/<incident_id>/suggestions/  — liste (tous collaborateurs)
-    POST /incidents/<incident_id>/suggestions/  — créer (contributeurs uniquement)
+    POST /incidents/<incident_id>/suggestions/  — créer (leader OU contributeurs)
     """
     serializer_class = PartnerSuggestionSerializer
-    permission_classes = [IsAuthenticated, IsIncidentContributor]
+    permission_classes = [IsAuthenticated, IsIncidentLeaderOrContributor]
 
     def get_queryset(self):
         return PartnerSuggestion.objects.filter(

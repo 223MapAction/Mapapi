@@ -16,11 +16,16 @@ from .views.incident import (
     AgentAssignedIncidentsView, FieldReportListCreateView,
     BulkDeleteIncidentsView, BulkRestoreIncidentsView,
     BulkForceDeleteIncidentsView,
+    IncidentPredictionView, RetryIncidentPredictionView,
+    IncidentChatView, AgentPinLoginView, AgentChangePinView,
 )
-from .views.collaboration import BulkCollaborationRequestView
+from .views.collaboration import (
+    BulkCollaborationRequestView,
+    CollaborationDetailView
+)
 from .views.organisation import (
     OrganisationMemberListView, OrganisationMemberCreateView,
-    OrganisationMemberDetailView,
+    OrganisationMemberDetailView, OrganisationDetailView,
 )
 from .ivr_views import (
     TwilioIVRWebhook, SelectZoneView, SelectCategoryView,
@@ -43,7 +48,8 @@ from .views import PasswordResetView
 urlpatterns = [
     path('tenant-config/', TenantConfigView.as_view(), name='tenant_config'),
     path('organisations/', OrganisationViewSet.as_view(), name='organisation-list-create'),
-    path('organisations/<int:pk>', OrganisationViewSet.as_view(), name='organisation-detail'),
+    path('organisations/<int:pk>/', OrganisationViewSet.as_view(), name='organisation-detail'),
+    path('organisations/<int:pk>/detail/', OrganisationDetailView.as_view(), name='organisation-detail-enriched'),
     # --- Gestion des membres d'une organisation ---
     path('organisations/<int:pk>/members/', OrganisationMemberListView.as_view(), name='organisation-members-list'),
     path('organisations/<int:pk>/members/add/', OrganisationMemberCreateView.as_view(), name='organisation-members-add'),
@@ -79,9 +85,14 @@ urlpatterns = [
     path('incident-filter/', IncidentFilterView.as_view(), name='incident_filter'),
     path('my-incidents/', MyIncidentsView.as_view(), name='my-incidents'),
     path('org-incidents/', OrgIncidentsView.as_view(), name='org-incidents'),
+    path('incidents/<int:incident_id>/prediction/', IncidentPredictionView.as_view(), name='incident-prediction'),
+    path('incidents/<int:incident_id>/prediction/retry/', RetryIncidentPredictionView.as_view(), name='incident-prediction-retry'),
+    path('incidents/<int:incident_id>/chat/', IncidentChatView.as_view(), name='incident-chat'),
     path('agent/assigned-incidents/', AgentAssignedIncidentsView.as_view(), name='agent-assigned-incidents'),
     path('field-reports/', FieldReportListCreateView.as_view(), name='field-reports'),
     path('agent-login/', AgentCodeLoginView.as_view(), name='agent-login'),
+    path('agent-pin-login/', AgentPinLoginView.as_view(), name='agent-pin-login'),
+    path('agent/change-pin/', AgentChangePinView.as_view(), name='agent-change-pin'),
     # URL for views Events
     path('Event/<int:id>', EvenementAPIView.as_view(), name='event'),
     path('Event/', EvenementAPIListView.as_view(), name='event'),
@@ -138,6 +149,7 @@ urlpatterns = [
     path('verify_otp/', PhoneOTPView.as_view(), name="verify_otp"),
     # Collaboration URL
     path('collaboration/', CollaborationView.as_view(), name='collaboration'),
+    path('collaboration/<int:pk>/', CollaborationDetailView.as_view(), name='collaboration-detail'),
     path('collaborations/bulk-request/', BulkCollaborationRequestView.as_view(), name='bulk-collaboration-request'),
     path('collaborations/dashboard/', CollaborationDashboardView.as_view(), name='collaboration-dashboard'),
     path('accept-collaboration/', AcceptCollaborationView.as_view(), name='accept-collaboration'),

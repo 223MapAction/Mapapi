@@ -111,6 +111,33 @@ class IsIncidentContributor(BasePermission):
         ).exists()
 
 
+class IsIncidentLeaderOrContributor(BasePermission):
+    """Autorise le leader de l'incident OU un contributeur accepté.
+
+    Utilisé pour les suggestions de partenaires : aujourd'hui un leader peut
+    également suggérer des partenaires (en plus des contributeurs).
+    """
+
+    message = "Seul le leader ou un contributeur peut effectuer cette action."
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.method in SAFE_METHODS:
+            return IsIncidentCollaborator().has_permission(request, view)
+        incident = _get_incident_from_view(view, request)
+        if incident is None:
+            return True
+        if incident.taken_by_id == request.user.id:
+            return True
+        return Collaboration.objects.filter(
+            incident=incident,
+            user=request.user,
+            role=COLLAB_ROLE_CONTRIBUTOR,
+            status='accepted',
+        ).exists()
+
+
 class IsIncidentLeaderOrReadOnlyCollaborator(BasePermission):
     """Lecture : tout collaborateur accepté. Écriture : leader uniquement."""
 
