@@ -165,8 +165,8 @@ urlpatterns = [
     path('history/<int:id>', ChatHistoryViewByIncident.as_view(), name='history_by_id'),
     path('histories/add/', add_history, name='add_history'),
     # Prediction
-    path('prediction/<int:id>', PredictionViewByID.as_view(), name="predicton"),
-    path('Incidentprediction/<str:id>', PredictionViewByIncidentID.as_view(), name="prediction"),
+    path('prediction/<int:id>/', PredictionViewByID.as_view(), name="predicton"),
+    path('Incidentprediction/<int:id>/', PredictionViewByIncidentID.as_view(), name="prediction"),
     # Notification
     path('notifications/', NotificationViewSet.as_view({'get': 'list'}), name="notification"),
     path('hadleIncident/<int:incident_id>', HandleIncidentView.as_view(), name="handle"),
