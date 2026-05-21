@@ -106,7 +106,7 @@ Map Action is an open source project. Fell free to fork the source and contribut
 
 ## Authors
 
-Our code squad : A7640S, Yugo19 & immerSIR
+Our code squad : A7640S & immerSIR
 
 ## Licensing
 
