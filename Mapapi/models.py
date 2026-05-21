@@ -1,5 +1,5 @@
 from django.db import models
-from django.db import connection
+from django.db import connection, transaction
 from django.contrib.auth.models import (
     AbstractBaseUser, BaseUserManager, PermissionsMixin, Group, Permission)
 from django.utils import timezone
@@ -312,6 +312,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         max_length=10, unique=True, null=True, blank=True,
         help_text="Code auto-généré pour la connexion des agents de terrain."
     )
+    pin_code = models.CharField(
+        max_length=128, null=True, blank=True,
+        help_text="PIN hashé pour la connexion des agents de terrain (4 chiffres)."
+    )
+    must_change_pin = models.BooleanField(
+        default=False,
+        help_text="Si True, l'agent doit changer son PIN à la prochaine connexion."
+    )
     points = models.IntegerField(null=True, blank=True, default=0)
     zones = models.ManyToManyField('Zone', blank=True)
     verification_token = models.UUIDField(default=uuid.uuid4, editable=False, null=True, blank=True)
@@ -384,6 +392,27 @@ class User(AbstractBaseUser, PermissionsMixin):
                 self.agent_code = code
                 self.save(update_fields=['agent_code'])
                 return code
+
+    def generate_and_set_pin(self, force_change=True):
+        """Génère un PIN aléatoire 4 chiffres, le hash, et le stocke.
+
+        Args:
+            force_change: si True, met must_change_pin=True (première connexion).
+
+        Returns:
+            Le PIN en clair (à communiquer à l'agent une seule fois).
+        """
+        from django.contrib.auth.hashers import make_password
+        pin = f"{random.randint(1000, 9999)}"
+        self.pin_code = make_password(pin)
+        self.must_change_pin = force_change
+        self.save(update_fields=['pin_code', 'must_change_pin'])
+        return pin
+
+    def check_pin(self, pin):
+        """Vérifie si un PIN en clair correspond au PIN hashé."""
+        from django.contrib.auth.hashers import check_password
+        return check_password(pin, self.pin_code)
 
 
 class FieldReport(models.Model):
@@ -715,21 +744,114 @@ class Colaboration(models.Model):
         return f"Collaboration on {self.incident} by {self.user}"
 
 
+class PredictionStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    PROCESSING = "processing", "Processing"
+    COMPLETED = "completed", "Completed"
+    COMPLETED_WITH_WARNING = "completed_with_warning", "Completed with warning"
+    FAILED = "failed", "Failed"
+
+
 class Prediction(models.Model):
+    # --- Legacy fields (kept nullable for backward compatibility) ---
+    # NOTE: ``incident_id`` was the legacy CharField. It has been renamed to
+    # ``legacy_incident_id`` because the new ``incident`` ForeignKey below
+    # auto-creates an attribute named ``incident_id`` (the FK column).
     prediction_id = models.IntegerField(unique=True, blank=True, null=True, default=None)
-    incident_id = models.CharField(max_length=255, blank=False, null=False)
-    incident_type = models.CharField(max_length=255, blank=False, null=False)
-    piste_solution = models.TextField(blank=False, null=False)
-    analysis = models.TextField(blank=False, null=False)
+    legacy_incident_id = models.CharField(max_length=255, blank=True, null=True)
+    incident_type = models.CharField(max_length=255, blank=True, null=True)
+    piste_solution = models.TextField(blank=True, null=True)
+    analysis = models.TextField(blank=True, null=True)
     ndvi_heatmap = models.TextField(blank=True, null=True)
     ndvi_ndwi_plot = models.TextField(blank=True, null=True)
     landcover_plot = models.TextField(blank=True, null=True)
 
+    # --- New model-deploy integration fields ---
+    incident = models.OneToOneField(
+        'Incident', on_delete=models.CASCADE,
+        related_name='prediction', null=True, blank=True
+    )
+    status = models.CharField(
+        max_length=32, choices=PredictionStatus.choices,
+        default=PredictionStatus.PENDING
+    )
+
+    macro_category = models.CharField(max_length=255, blank=True, default='')
+    sub_category = models.CharField(max_length=255, blank=True, default='')
+    description = models.TextField(blank=True, default='')
+
+    source_size_meters = models.FloatField(null=True, blank=True)
+    spread_vectors = models.JSONField(default=list, blank=True)
+
+    impact_radius_meters = models.FloatField(null=True, blank=True)
+    radius_explanation = models.TextField(blank=True, default='')
+
+    global_impact_score = models.FloatField(null=True, blank=True)
+    base_severity = models.IntegerField(null=True, blank=True)
+    impact_tags = models.JSONField(default=list, blank=True)
+
+    recommendation = models.TextField(blank=True, default='')
+
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+
+    city = models.CharField(max_length=255, blank=True, default='')
+    region = models.CharField(max_length=255, blank=True, default='')
+    country = models.CharField(max_length=255, blank=True, default='')
+    display_name = models.TextField(blank=True, default='')
+
+    social_vulnerability_score = models.FloatField(null=True, blank=True)
+    is_social_probabilistic = models.BooleanField(default=False)
+
+    total_population_exposed = models.IntegerField(default=0)
+    adult_men_exposed = models.IntegerField(default=0)
+    adult_women_exposed = models.IntegerField(default=0)
+    children_exposed = models.IntegerField(default=0)
+    maternities_count = models.IntegerField(default=0)
+    nurseries_count = models.IntegerField(default=0)
+
+    health_centers = models.IntegerField(default=0)
+    maternities = models.IntegerField(default=0)
+    schools = models.IntegerField(default=0)
+    nurseries = models.IntegerField(default=0)
+    markets = models.IntegerField(default=0)
+    water_points = models.IntegerField(default=0)
+    main_roads_bridges = models.IntegerField(default=0)
+    residential_buildings = models.IntegerField(default=0)
+
+    ai_analysis = models.JSONField(default=dict, blank=True)
+    topography = models.JSONField(default=dict, blank=True)
+    satellite = models.JSONField(default=dict, blank=True)
+    social_data = models.JSONField(default=dict, blank=True)
+    human_impact = models.JSONField(default=dict, blank=True)
+    geocoding = models.JSONField(default=dict, blank=True)
+    potential_risk = models.JSONField(null=True, blank=True)
+    full_response = models.JSONField(default=dict, blank=True)
+
+    error_message = models.TextField(blank=True, default='')
+
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True, null=True, blank=True)
+
     def save(self, *args, **kwargs):
         if not self.prediction_id:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT nextval('Mapapi_prediction_new_id_seq')")
-                self.prediction_id = cursor.fetchone()[0]
+            # Use a savepoint so that a missing legacy sequence does not
+            # abort the surrounding transaction (which would otherwise
+            # poison every subsequent query in the same request).
+            try:
+                with transaction.atomic():
+                    with connection.cursor() as cursor:
+                        cursor.execute(
+                            "SELECT nextval('Mapapi_prediction_new_id_seq')"
+                        )
+                        self.prediction_id = cursor.fetchone()[0]
+            except Exception:
+                # The legacy sequence may not exist on fresh databases.
+                self.prediction_id = None
+        # Keep legacy ``legacy_incident_id`` (CharField) aligned with the FK
+        # so any old code reading the previous column keeps working.
+        if self.incident and not self.legacy_incident_id:
+            self.legacy_incident_id = str(self.incident.pk)
         super().save(*args, **kwargs)
 
 
@@ -743,10 +865,40 @@ class Notification(models.Model):
     def __str__(self):
         return self.message
     
+CHAT_ROLE_USER = 'user'
+CHAT_ROLE_ASSISTANT = 'assistant'
+CHAT_ROLE_SYSTEM = 'system'
+CHAT_ROLES = (
+    (CHAT_ROLE_USER, 'User'),
+    (CHAT_ROLE_ASSISTANT, 'Assistant'),
+    (CHAT_ROLE_SYSTEM, 'System'),
+)
+
+
 class ChatHistory(models.Model):
-    session_id = models.CharField(max_length=255, db_index=True)
-    question = models.TextField(db_index=True)
-    answer = models.TextField(db_index=True)
+    # --- Legacy fields (kept nullable for backward compatibility) ---
+    session_id = models.CharField(max_length=255, db_index=True, blank=True, null=True)
+    question = models.TextField(db_index=True, blank=True, null=True)
+    answer = models.TextField(db_index=True, blank=True, null=True)
+
+    # --- New per-message fields tied to an Incident ---
+    incident = models.ForeignKey(
+        'Incident', on_delete=models.CASCADE,
+        related_name='chat_messages', null=True, blank=True,
+    )
+    user = models.ForeignKey(
+        User, on_delete=models.SET_NULL,
+        related_name='chat_messages', null=True, blank=True,
+    )
+    role = models.CharField(max_length=20, choices=CHAT_ROLES, default=CHAT_ROLE_USER)
+    content = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+
+    class Meta:
+        ordering = ('created_at', 'id')
+
+    def __str__(self):
+        return f"[{self.role}] {self.content[:60]}"
 
 class UserAction(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, blank=False, null=False)

@@ -2,6 +2,9 @@
 import string
 import random
 
+from Mapapi.views.common import CustomPageNumberPagination
+from django.db.models import Count
+
 from rest_framework import status, generics, permissions
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
@@ -9,7 +12,7 @@ from rest_framework.response import Response
 
 from drf_spectacular.utils import extend_schema
 
-from ..models import Organisation, User, ORG_ROLE_ADMIN, ORG_ROLE_BUREAU, ORG_ROLE_FIELD
+from ..models import Organisation, User, Incident, ORG_ROLE_ADMIN, ORG_ROLE_BUREAU, ORG_ROLE_FIELD
 from ..serializer import OrganisationSerializer, OrganisationMemberSerializer
 
 
@@ -17,9 +20,55 @@ class OrganisationViewSet(generics.ListCreateAPIView, generics.RetrieveUpdateDes
     queryset = Organisation.objects.all()
     serializer_class = OrganisationSerializer
     permission_classes = []
+    pagination_class = CustomPageNumberPagination  # Liste d'orgs sans pagination (généralement peu d'orgs)
 
     def get_queryset(self):
         return Organisation.objects.all()
+
+
+@extend_schema(
+    description="Détail enrichi d'une organisation avec statistiques (membres, incidents, etc.).",
+    responses={200: OrganisationSerializer},
+)
+class OrganisationDetailView(APIView):
+    """GET /organisations/<int:pk>/detail/ — détail enrichi avec stats."""
+    permission_classes = []
+
+    def get(self, request, pk):
+        try:
+            org = Organisation.objects.get(pk=pk)
+        except Organisation.DoesNotExist:
+            return Response(
+                {"error": "Organisation non trouvée."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Statistiques
+        members = org.members.all()
+        member_count = members.count()
+        field_agents_count = members.filter(org_role=ORG_ROLE_FIELD).count()
+        bureau_agents_count = members.filter(org_role=ORG_ROLE_BUREAU).count()
+        admins_count = members.filter(org_role=ORG_ROLE_ADMIN).count()
+
+        # Incidents créés par les membres de l'org
+        incident_count = Incident.objects.filter(user_id__in=members).count()
+        resolved_count = Incident.objects.filter(
+            user_id__in=members,
+            status=RESOLVED,
+        ).count()
+
+        data = OrganisationSerializer(org).data
+        data.update({
+            "stats": {
+                "member_count": member_count,
+                "field_agents_count": field_agents_count,
+                "bureau_agents_count": bureau_agents_count,
+                "admins_count": admins_count,
+                "incident_count": incident_count,
+                "resolved_incident_count": resolved_count,
+            },
+        })
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class TenantConfigView(APIView):
@@ -123,10 +172,20 @@ class OrganisationMemberCreateView(APIView):
         if org_role == ORG_ROLE_FIELD and not member.agent_code:
             member.generate_agent_code()
 
+        # Générer un PIN initial pour les agents de terrain (à changer à la 1ère connexion)
+        initial_pin = None
+        if org_role == ORG_ROLE_FIELD and not member.pin_code:
+            initial_pin = member.generate_and_set_pin(force_change=True)
+
         member.save()
 
         serializer = OrganisationMemberSerializer(member)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        response_data = serializer.data
+        # Inclure le PIN en clair uniquement lors de la création (pour le communiquer à l'agent)
+        if initial_pin is not None:
+            response_data['initial_pin'] = initial_pin
+            response_data['must_change_pin'] = member.must_change_pin
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema(

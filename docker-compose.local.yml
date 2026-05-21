@@ -40,6 +40,10 @@ services:
             - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
             - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
             - TWILIO_PHONE_NUMBER=${TWILIO_PHONE_NUMBER}
+            - MODEL_DEPLOY_ANALYZE_URL=${MODEL_DEPLOY_ANALYZE_URL}
+            - MODEL_DEPLOY_TIMEOUT=${MODEL_DEPLOY_TIMEOUT}
+            - MODEL_DEPLOY_CHAT_URL=${MODEL_DEPLOY_CHAT_URL}
+            - MODEL_DEPLOY_CHAT_TIMEOUT=${MODEL_DEPLOY_CHAT_TIMEOUT}
         depends_on:
             - redis
             - celery
@@ -94,6 +98,8 @@ services:
             - POSTGRES_DB=${POSTGRES_DB}
             - SECRET_KEY=${SECRET_KEY}
             - TEST_POSTGRES_DB=${TEST_POSTGRES_DB}
+            - MODEL_DEPLOY_ANALYZE_URL=${MODEL_DEPLOY_ANALYZE_URL}
+            - MODEL_DEPLOY_TIMEOUT=${MODEL_DEPLOY_TIMEOUT}
         networks:
             micro-services-network:
                 ipv4_address: 192.168.0.7

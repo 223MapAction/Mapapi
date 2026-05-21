@@ -67,6 +67,10 @@ jobs:
             echo "ORANGE_CLIENT_ID=${{ secrets.ORANGE_CLIENT_ID }}"
             echo "ORANGE_CLIENT_SECRET=${{ secrets.ORANGE_CLIENT_SECRET }}"
             echo "ORANGE_SENDER_ADDRESS=${{ secrets.ORANGE_SENDER_ADDRESS }}"
+            echo "MODEL_DEPLOY_ANALYZE_URL=${{ secrets.MODEL_DEPLOY_ANALYZE_URL }}"
+            echo "MODEL_DEPLOY_TIMEOUT=${{ secrets.MODEL_DEPLOY_TIMEOUT }}"
+            echo "MODEL_DEPLOY_CHAT_URL=${{ secrets.MODEL_DEPLOY_CHAT_URL }}"
+            echo "MODEL_DEPLOY_CHAT_TIMEOUT=${{ secrets.MODEL_DEPLOY_CHAT_TIMEOUT }}"
           } > .env
 
       - name: Build and Deploy Docker Image

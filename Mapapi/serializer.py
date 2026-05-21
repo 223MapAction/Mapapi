@@ -399,6 +399,25 @@ class PredictionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Prediction
         fields = '__all__'
+        read_only_fields = (
+            'status', 'macro_category', 'sub_category', 'description',
+            'source_size_meters', 'spread_vectors',
+            'impact_radius_meters', 'radius_explanation',
+            'global_impact_score', 'base_severity', 'impact_tags',
+            'recommendation',
+            'latitude', 'longitude',
+            'city', 'region', 'country', 'display_name',
+            'social_vulnerability_score', 'is_social_probabilistic',
+            'total_population_exposed', 'adult_men_exposed',
+            'adult_women_exposed', 'children_exposed',
+            'maternities_count', 'nurseries_count',
+            'health_centers', 'maternities', 'schools', 'nurseries',
+            'markets', 'water_points', 'main_roads_bridges',
+            'residential_buildings',
+            'ai_analysis', 'topography', 'satellite', 'social_data',
+            'human_impact', 'geocoding', 'potential_risk', 'full_response',
+            'error_message', 'created_at', 'updated_at',
+        )
 
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:

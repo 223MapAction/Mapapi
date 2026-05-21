@@ -20,10 +20,15 @@ from ..serializer import *
 from ..models import (
     Collaboration, COLLAB_ROLE_LEADER, RESOLVED, TASK_DONE, TASK_FAILED,
     ORG_ROLE_FIELD, ORG_ROLE_ADMIN, ORG_ROLE_BUREAU,
+    Prediction, PredictionStatus,
+    ChatHistory, CHAT_ROLE_USER, CHAT_ROLE_ASSISTANT,
 )
 from ..permissions import IsIncidentLeader, IsSuperAdminOrOrgOwnIncident, IsSuperAdmin
+from ..tasks import analyze_incident_with_model_task
+from ..services.model_chat_client import ask_model_chat
 from .common import CustomPageNumberPagination
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth.hashers import check_password
 
 
 @extend_schema(
@@ -179,6 +184,26 @@ class IncidentAPIListView(generics.CreateAPIView):
                 print(f"Warning: Video conversion failed: {e}")
             except Exception as e:
                 print(f"Warning: Unexpected error during video conversion: {e}")
+
+        # --- Trigger AI model-deploy analysis (async via Celery) ---
+        # We create a pending Prediction immediately so the front-end can poll
+        # GET /MapApi/incidents/<id>/prediction/ and observe status transitions.
+        incident_obj = serializer.instance
+        if incident_obj is not None:
+            prediction, _ = Prediction.objects.get_or_create(
+                incident=incident_obj,
+                defaults={'status': PredictionStatus.PENDING},
+            )
+            if incident_obj.photo:
+                try:
+                    analyze_incident_with_model_task.delay(prediction.id)
+                except Exception as e:  # broker unavailable, etc.
+                    print(f"Warning: could not enqueue analyze task: {e}")
+            else:
+                # No photo => mark prediction as failed right away.
+                prediction.status = PredictionStatus.FAILED
+                prediction.error_message = "Incident has no photo."
+                prediction.save(update_fields=['status', 'error_message', 'updated_at'])
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -952,3 +977,289 @@ class RestoreIncidentView(APIView):
         incident.save(update_fields=['is_deleted'])
         serializer = IncidentGetSerializer(incident)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    description="Récupérer l'analyse AI (Prediction) d'un incident.",
+    responses={200: PredictionSerializer, 404: "Pas de prédiction"},
+)
+class IncidentPredictionView(APIView):
+    """GET /MapApi/incidents/<incident_id>/prediction/ — état + résultat de l'analyse."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, incident_id):
+        try:
+            incident = Incident.objects.get(pk=incident_id)
+        except Incident.DoesNotExist:
+            return Response({"error": "Incident non trouvé."}, status=status.HTTP_404_NOT_FOUND)
+
+        prediction = getattr(incident, 'prediction', None)
+        if prediction is None:
+            return Response(
+                {"error": "Aucune prédiction n'existe pour cet incident."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(PredictionSerializer(prediction).data, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    description="Relancer l'analyse AI d'un incident (Super Admin uniquement).",
+    responses={202: PredictionSerializer, 404: "Incident non trouvé"},
+)
+class RetryIncidentPredictionView(APIView):
+    """POST /MapApi/incidents/<incident_id>/prediction/retry/ — relance la task Celery."""
+    permission_classes = [IsAuthenticated, IsSuperAdmin]
+
+    def post(self, request, incident_id):
+        try:
+            incident = Incident.objects.get(pk=incident_id)
+        except Incident.DoesNotExist:
+            return Response({"error": "Incident non trouvé."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not incident.photo:
+            return Response(
+                {"error": "L'incident n'a pas de photo, l'analyse est impossible."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        prediction, _ = Prediction.objects.get_or_create(
+            incident=incident,
+            defaults={'status': PredictionStatus.PENDING},
+        )
+        prediction.status = PredictionStatus.PENDING
+        prediction.error_message = ''
+        prediction.save(update_fields=['status', 'error_message', 'updated_at'])
+
+        analyze_incident_with_model_task.delay(prediction.id)
+        return Response(PredictionSerializer(prediction).data, status=status.HTTP_202_ACCEPTED)
+
+
+@extend_schema(
+    description=(
+        "Chat LLM par incident. GET: récupère l'historique. "
+        "POST: envoie une question, le serveur appelle le model-deploy /chat "
+        "avec le contexte de la Prediction et stocke les deux messages (user, assistant)."
+    ),
+)
+class IncidentChatView(APIView):
+    """GET/POST /MapApi/incidents/<incident_id>/chat/."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, incident_id):
+        try:
+            incident = Incident.objects.get(pk=incident_id)
+        except Incident.DoesNotExist:
+            return Response({"error": "Incident non trouvé."}, status=status.HTTP_404_NOT_FOUND)
+
+        history = (
+            incident.chat_messages
+            .filter(role__in=[CHAT_ROLE_USER, CHAT_ROLE_ASSISTANT])
+            .order_by('created_at', 'id')
+        )
+        return Response(
+            {
+                "history": [
+                    {
+                        "role": m.role,
+                        "content": m.content,
+                        "created_at": m.created_at,
+                        "user_id": m.user_id,
+                    }
+                    for m in history
+                ]
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def post(self, request, incident_id):
+        try:
+            incident = Incident.objects.get(pk=incident_id)
+        except Incident.DoesNotExist:
+            return Response({"error": "Incident non trouvé."}, status=status.HTTP_404_NOT_FOUND)
+
+        prediction = getattr(incident, 'prediction', None)
+        if prediction is None:
+            return Response(
+                {"detail": "Prediction not found for this incident."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not prediction.full_response:
+            return Response(
+                {"detail": "Prediction context is empty (analysis not completed yet)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user_message = (request.data.get('message') or '').strip()
+        if not user_message:
+            return Response(
+                {"detail": "message is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Build the conversation payload from the persisted history.
+        history_qs = incident.chat_messages.filter(
+            role__in=[CHAT_ROLE_USER, CHAT_ROLE_ASSISTANT]
+        ).order_by('created_at', 'id')
+        messages = [{"role": item.role, "content": item.content} for item in history_qs]
+        messages.append({"role": CHAT_ROLE_USER, "content": user_message})
+
+        # Persist the user message before calling the LLM so the question
+        # is never lost even if the LLM call fails.
+        ChatHistory.objects.create(
+            incident=incident,
+            user=request.user if request.user.is_authenticated else None,
+            role=CHAT_ROLE_USER,
+            content=user_message,
+        )
+
+        try:
+            assistant_response = ask_model_chat(
+                messages=messages,
+                context=prediction.full_response,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return Response(
+                {"detail": f"Chat service error: {exc}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        ChatHistory.objects.create(
+            incident=incident,
+            user=None,  # assistant message has no user
+            role=CHAT_ROLE_ASSISTANT,
+            content=assistant_response,
+        )
+
+        return Response(
+            {
+                "message": assistant_response,
+                "history": messages + [{
+                    "role": CHAT_ROLE_ASSISTANT,
+                    "content": assistant_response,
+                }],
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+@extend_schema(
+    description="Connexion d'un agent de terrain via téléphone + PIN 4 chiffres.",
+    request={'application/json': {'type': 'object', 'properties': {'phone': {'type': 'string'}, 'pin': {'type': 'string'}}}},
+    responses={200: 'Tokens JWT + must_change_pin flag'},
+)
+class AgentPinLoginView(APIView):
+    """POST /agent-pin-login/ — login par téléphone + PIN, retourne tokens JWT."""
+    permission_classes = []
+
+    def post(self, request):
+        phone = request.data.get('phone')
+        pin = request.data.get('pin')
+        if not phone or not pin:
+            return Response(
+                {"error": "phone et pin sont requis."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user = User.objects.get(phone=phone, org_role=ORG_ROLE_FIELD, is_active=True)
+        except User.DoesNotExist:
+            return Response(
+                {"error": "Téléphone invalide ou utilisateur non actif."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        if not user.pin_code:
+            return Response(
+                {"error": "Aucun PIN configuré pour cet agent."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not user.check_pin(pin):
+            return Response(
+                {"error": "PIN invalide."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # Générer les tokens JWT
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {
+                "refresh": str(refresh),
+                "access": str(refresh.access_token),
+                "user": {
+                    "id": user.id,
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "org_role": user.org_role,
+                    "phone": user.phone,
+                    "must_change_pin": user.must_change_pin,
+                    "organisation": user.organisation_member.name if user.organisation_member else None,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+@extend_schema(
+    description="Changer le PIN de l'agent connecté. Requiert l'ancien PIN.",
+    request={'application/json': {'type': 'object', 'properties': {'old_pin': {'type': 'string'}, 'new_pin': {'type': 'string'}}}},
+    responses={200: 'PIN changé avec succès'},
+)
+class AgentChangePinView(APIView):
+    """POST /agent/change-pin/ — changer son PIN (authentifié)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        old_pin = request.data.get('old_pin')
+        new_pin = request.data.get('new_pin')
+
+        if not old_pin or not new_pin:
+            return Response(
+                {"error": "old_pin et new_pin sont requis."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = request.user
+        if user.org_role != ORG_ROLE_FIELD:
+            return Response(
+                {"error": "Cette action est réservée aux agents de terrain."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if not user.pin_code:
+            return Response(
+                {"error": "Aucun PIN configuré pour cet agent."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not user.check_pin(old_pin):
+            return Response(
+                {"error": "Ancien PIN invalide."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # Valider le nouveau PIN : 4 chiffres, pas de PINs trop simples
+        if not new_pin.isdigit() or len(new_pin) != 4:
+            return Response(
+                {"error": "Le nouveau PIN doit être composé de 4 chiffres."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        weak_pins = ['0000', '1234', '1111', '2222', '3333', '4444', '5555', '6666', '7777', '8888', '9999']
+        if new_pin in weak_pins:
+            return Response(
+                {"error": "Ce PIN est trop simple. Choisissez un autre PIN."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Hasher et stocker le nouveau PIN
+        from django.contrib.auth.hashers import make_password
+        user.pin_code = make_password(new_pin)
+        user.must_change_pin = False
+        user.save(update_fields=['pin_code', 'must_change_pin'])
+
+        return Response(
+            {"message": "PIN changé avec succès."},
+            status=status.HTTP_200_OK,
+        )
