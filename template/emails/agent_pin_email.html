@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vos identifiants de connexion - Map Action</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #333;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background: linear-gradient(135deg, #38A0DB 0%, #2c8fbd 100%);
+            color: #ffffff;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        .header p {
+            margin: 10px 0 0;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 40px 30px;
+        }
+        .welcome {
+            font-size: 18px;
+            font-weight: 500;
+            color: #38A0DB;
+            margin-bottom: 20px;
+        }
+        .content p {
+            font-size: 15px;
+            line-height: 1.7;
+            margin: 0 0 20px;
+            color: #555;
+        }
+        .pin-box {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border: 2px dashed #38A0DB;
+            border-radius: 10px;
+            padding: 25px;
+            text-align: center;
+            margin: 30px 0;
+        }
+        .info-card {
+            background-color: #e8f4fd;
+            border-left: 4px solid #38A0DB;
+            border-radius: 6px;
+            padding: 18px 20px;
+            margin: 20px 0;
+        }
+        .info-card .info-row {
+            display: block;
+            margin: 8px 0;
+            font-size: 15px;
+            color: #333;
+        }
+        .info-card .info-label {
+            display: inline-block;
+            min-width: 130px;
+            font-weight: 600;
+            color: #2c8fbd;
+        }
+        .badge-role {
+            display: inline-block;
+            background: linear-gradient(135deg, #38A0DB 0%, #2c8fbd 100%);
+            color: #ffffff;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .pin-label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .pin-code {
+            font-size: 42px;
+            font-weight: 700;
+            color: #38A0DB;
+            letter-spacing: 8px;
+            margin: 0;
+        }
+        .instructions {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px 20px;
+            border-radius: 6px;
+            margin: 25px 0;
+        }
+        .instructions strong {
+            color: #856404;
+        }
+        .instructions ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin: 8px 0;
+            color: #856404;
+        }
+        .footer {
+            padding: 20px;
+            background-color: #f4f4f4;
+            text-align: center;
+            font-size: 13px;
+            color: #777;
+        }
+        .footer p {
+            margin: 5px 0;
+        }
+        .footer a {
+            color: #38A0DB;
+            text-decoration: none;
+        }
+        .emoji {
+            font-size: 24px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌍 Map Action</h1>
+            <p>Votre plateforme de gestion d'incidents</p>
+        </div>
+        <div class="content">
+            <p class="welcome">Bonjour {{ first_name }} {{ last_name }},</p>
+            <p>
+                <span class="emoji">🎉</span> Bienvenue sur <strong>Map Action</strong> ! Votre compte vient d'être créé par <strong>{{ organisation_name }}</strong>.
+            </p>
+
+            <div class="info-card">
+                <span class="info-row"><span class="info-label">👤 Rôle :</span> <span class="badge-role">Agent de terrain</span></span>
+                <span class="info-row"><span class="info-label">🏢 Organisation :</span> <strong>{{ organisation_name }}</strong></span>
+                <span class="info-row"><span class="info-label">📱 Téléphone :</span> <strong>{{ phone }}</strong></span>
+            </div>
+
+            <p>Voici votre code PIN de connexion sécurisé :</p>
+            
+            <div class="pin-box">
+                <div class="pin-label">Votre code PIN de connexion</div>
+                <div class="pin-code">{{ pin_code }}</div>
+            </div>
+            
+            <div class="instructions">
+                <strong>⚠️ Instructions importantes :</strong>
+                <ul>
+                    <li>Utilisez votre numéro de téléphone <strong>{{ phone }}</strong> et ce PIN pour vous connecter.</li>
+                    <li>Conservez ce PIN confidentiel et ne le partagez avec personne.</li>
+                    <li>Vous devrez <strong>changer ce PIN</strong> lors de votre première connexion pour plus de sécurité.</li>
+                </ul>
+            </div>
+            
+            <p>
+                <span class="emoji">🚀</span> Prêt à commencer ? Connectez-vous avec votre numéro de téléphone et ce PIN.
+            </p>
+            <p>
+                Pour toute question, n'hésitez pas à contacter votre administrateur ou notre support.
+            </p>
+        </div>
+        <div class="footer">
+            <p>&copy; 2024 Map Action. Tous droits réservés.</p>
+            <p>Contactez-nous à <a href="mailto:contact@map-action.com">contact@map-action.com</a></p>
+        </div>
+    </div>
+</body>
+</html>

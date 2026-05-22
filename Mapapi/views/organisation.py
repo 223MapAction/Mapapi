@@ -1,9 +1,12 @@
 """Organisation & tenant-config endpoints + member management."""
 import string
 import random
+import logging
 
 from Mapapi.views.common import CustomPageNumberPagination
 from django.db.models import Count
+
+logger = logging.getLogger(__name__)
 
 from rest_framework import status, generics, permissions
 from rest_framework.permissions import IsAuthenticated
@@ -14,6 +17,7 @@ from drf_spectacular.utils import extend_schema
 
 from ..models import Organisation, User, Incident, ORG_ROLE_ADMIN, ORG_ROLE_BUREAU, ORG_ROLE_FIELD
 from ..serializer import OrganisationSerializer, OrganisationMemberSerializer
+from ..Send_mails import send_email
 
 
 class OrganisationViewSet(generics.ListCreateAPIView, generics.RetrieveUpdateDestroyAPIView):
@@ -179,12 +183,39 @@ class OrganisationMemberCreateView(APIView):
 
         member.save()
 
+        # Envoyer l'email avec le PIN pour les agents de terrain
+        email_sent = False
+        email_error = None
+        if initial_pin is not None and member.email:
+            try:
+                context = {
+                    'first_name': member.first_name,
+                    'last_name': member.last_name,
+                    'phone': member.phone or 'non renseigné',
+                    'pin_code': initial_pin,
+                    'organisation_name': org.name,
+                }
+                send_email.delay(
+                    subject='🌍 Bienvenue sur Map Action - Vos identifiants de connexion',
+                    template_name='emails/agent_pin_email.html',
+                    context=context,
+                    to_email=member.email
+                )
+                email_sent = True
+                logger.info(f"Email PIN envoyé (queue Celery) à {member.email} pour l'agent {member.id}")
+            except Exception as e:
+                email_error = str(e)
+                logger.error(f"Erreur envoi email PIN à {member.email}: {e}", exc_info=True)
+
         serializer = OrganisationMemberSerializer(member)
         response_data = serializer.data
         # Inclure le PIN en clair uniquement lors de la création (pour le communiquer à l'agent)
         if initial_pin is not None:
             response_data['initial_pin'] = initial_pin
             response_data['must_change_pin'] = member.must_change_pin
+            response_data['email_sent'] = email_sent
+            if email_error:
+                response_data['email_error'] = email_error
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 
