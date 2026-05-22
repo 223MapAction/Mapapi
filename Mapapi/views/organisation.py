@@ -1,9 +1,12 @@
 """Organisation & tenant-config endpoints + member management."""
 import string
 import random
+import logging
 
 from Mapapi.views.common import CustomPageNumberPagination
 from django.db.models import Count
+
+logger = logging.getLogger(__name__)
 
 from rest_framework import status, generics, permissions
 from rest_framework.permissions import IsAuthenticated
@@ -14,6 +17,7 @@ from drf_spectacular.utils import extend_schema
 
 from ..models import Organisation, User, Incident, ORG_ROLE_ADMIN, ORG_ROLE_BUREAU, ORG_ROLE_FIELD
 from ..serializer import OrganisationSerializer, OrganisationMemberSerializer
+from ..Send_mails import send_email
 
 
 class OrganisationViewSet(generics.ListCreateAPIView, generics.RetrieveUpdateDestroyAPIView):
@@ -179,12 +183,175 @@ class OrganisationMemberCreateView(APIView):
 
         member.save()
 
+        # Envoyer l'email avec le PIN pour les agents de terrain
+        email_sent = False
+        email_error = None
+        if initial_pin is not None and member.email:
+            try:
+                context = {
+                    'first_name': member.first_name,
+                    'last_name': member.last_name,
+                    'phone': member.phone or 'non renseigné',
+                    'pin_code': initial_pin,
+                    'organisation_name': org.name,
+                }
+                send_email.delay(
+                    subject='🌍 Bienvenue sur Map Action - Vos identifiants de connexion',
+                    template_name='emails/agent_pin_email.html',
+                    context=context,
+                    to_email=member.email
+                )
+                email_sent = True
+                logger.info(f"Email PIN envoyé (queue Celery) à {member.email} pour l'agent {member.id}")
+            except Exception as e:
+                email_error = str(e)
+                logger.error(f"Erreur envoi email PIN à {member.email}: {e}", exc_info=True)
+
         serializer = OrganisationMemberSerializer(member)
         response_data = serializer.data
         # Inclure le PIN en clair uniquement lors de la création (pour le communiquer à l'agent)
         if initial_pin is not None:
             response_data['initial_pin'] = initial_pin
             response_data['must_change_pin'] = member.must_change_pin
+            response_data['email_sent'] = email_sent
+            if email_error:
+                response_data['email_error'] = email_error
+        return Response(response_data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(
+    description=(
+        "Endpoint tout-en-un : crée un utilisateur ET l'affecte comme agent de terrain "
+        "dans l'organisation. Génère agent_code + PIN initial + envoie email automatiquement."
+    ),
+    request={
+        'application/json': {
+            'type': 'object',
+            'required': ['first_name', 'last_name', 'email', 'phone'],
+            'properties': {
+                'first_name': {'type': 'string'},
+                'last_name': {'type': 'string'},
+                'email': {'type': 'string', 'format': 'email'},
+                'phone': {'type': 'string', 'example': '+221771234567'},
+                'address': {'type': 'string'},
+            },
+        }
+    },
+    responses={201: OrganisationMemberSerializer},
+)
+class FieldAgentCreateView(APIView):
+    """POST /organisations/<pk>/agents/create/
+
+    Endpoint tout-en-un destiné aux admins d'organisation :
+    crée l'utilisateur, l'affecte comme agent de terrain, génère
+    agent_code + PIN initial, et envoie l'email d'identifiants.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        user = request.user
+
+        # Permissions : org_admin/bureau_agent de cette org ou superadmin
+        if not (user.is_staff or (
+            user.organisation_member_id == pk
+            and user.org_role in [ORG_ROLE_ADMIN, ORG_ROLE_BUREAU]
+        )):
+            return Response(
+                {"error": "Vous n'avez pas les droits pour créer un agent dans cette organisation."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            org = Organisation.objects.get(pk=pk)
+        except Organisation.DoesNotExist:
+            return Response({"error": "Organisation non trouvée."}, status=status.HTTP_404_NOT_FOUND)
+
+        first_name = (request.data.get('first_name') or '').strip()
+        last_name = (request.data.get('last_name') or '').strip()
+        email = (request.data.get('email') or '').strip().lower()
+        phone = (request.data.get('phone') or '').strip()
+        address = (request.data.get('address') or '').strip()
+
+        # Validation
+        missing = [f for f, v in {
+            'first_name': first_name,
+            'last_name': last_name,
+            'email': email,
+            'phone': phone,
+        }.items() if not v]
+        if missing:
+            return Response(
+                {"error": f"Champs requis manquants : {', '.join(missing)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Email unique
+        if User.objects.filter(email=email).exists():
+            return Response(
+                {"error": "Un utilisateur avec cet email existe déjà. Utilise l'endpoint /members/add/ pour l'affecter."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Téléphone unique parmi les agents de terrain (sinon login PIN ambigu)
+        if User.objects.filter(phone=phone, org_role=ORG_ROLE_FIELD).exists():
+            return Response(
+                {"error": "Un agent de terrain avec ce numéro de téléphone existe déjà."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Création de l'utilisateur (password aléatoire, l'agent se connecte via PIN)
+        random_password = ''.join(random.choices(string.ascii_letters + string.digits, k=24))
+        member = User(
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone,
+            address=address,
+            user_type='citizen',
+            org_role=ORG_ROLE_FIELD,
+            organisation_member=org,
+            is_active=True,
+            is_verified=True,  # créé par admin, pas besoin de vérification email
+        )
+        member.set_password(random_password)
+        member.save()
+
+        # Génération agent_code + PIN
+        member.generate_agent_code()
+        initial_pin = member.generate_and_set_pin(force_change=True)
+
+        # Envoi de l'email avec le PIN
+        email_sent = False
+        email_error = None
+        try:
+            context = {
+                'first_name': member.first_name,
+                'last_name': member.last_name,
+                'phone': member.phone,
+                'pin_code': initial_pin,
+                'organisation_name': org.name,
+            }
+            send_email.delay(
+                subject='🌍 Bienvenue sur Map Action - Vos identifiants de connexion',
+                template_name='emails/agent_pin_email.html',
+                context=context,
+                to_email=member.email,
+            )
+            email_sent = True
+            logger.info(f"Email PIN envoyé (queue Celery) à {member.email} pour l'agent {member.id}")
+        except Exception as e:
+            email_error = str(e)
+            logger.error(f"Erreur envoi email PIN à {member.email}: {e}", exc_info=True)
+
+        serializer = OrganisationMemberSerializer(member)
+        response_data = serializer.data
+        response_data.update({
+            'initial_pin': initial_pin,
+            'must_change_pin': member.must_change_pin,
+            'email_sent': email_sent,
+        })
+        if email_error:
+            response_data['email_error'] = email_error
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 

@@ -59,7 +59,7 @@ class UserAdmin(admin.ModelAdmin):
             'fields': ('user_type', 'org_role', 'is_staff', 'is_superuser', 'is_active', 'is_verified')
         }),
         ('Authentification', {
-            'fields': ('password', 'agent_code', 'otp', 'otp_expiration')
+            'fields': ('password', 'agent_code', 'pin_code', 'must_change_pin', 'otp', 'otp_expiration')
         }),
         ('Vérification', {
             'fields': ('verification_token',)
