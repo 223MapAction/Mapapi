@@ -22,6 +22,7 @@ CITIZEN = 'citizen'
 REPORTER = 'reporter'
 BUSINESS = 'business'
 ELU = 'elu'
+FIELD_AGENT = 'field_agent'
 DECLARED = 'declared'
 RESOLVED = 'resolved'
 IN_PROGRESS = "in_progress"
@@ -33,7 +34,8 @@ USER_TYPES = (
     (REPORTER, REPORTER),
     (CITIZEN, CITIZEN),
     (BUSINESS, BUSINESS),
-    (ELU, ELU)
+    (ELU, ELU),
+    (FIELD_AGENT, FIELD_AGENT),
 )
 ETAT_INCIDENT = (
     (DECLARED, DECLARED),

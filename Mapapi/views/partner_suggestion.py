@@ -17,6 +17,47 @@ from ..permissions import (
 )
 
 
+class MyReceivedSuggestionsView(generics.ListAPIView):
+    """
+    GET /my-suggestions/received/  — Liste les suggestions où JE suis le partenaire proposé.
+
+    Filtre optionnel via ?status=pending|accepted|rejected.
+    L'utilisateur peut ensuite décider d'accepter/refuser via les endpoints
+    /incidents/<id>/suggestions/<pk>/accept|reject/ (s'il est leader de
+    l'incident concerné).
+    """
+    serializer_class = PartnerSuggestionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = PartnerSuggestion.objects.filter(
+            suggested_partner=self.request.user
+        ).select_related('incident', 'suggested_by').order_by('-created_at')
+        status_param = self.request.query_params.get('status')
+        if status_param in (SUGGESTION_PENDING, SUGGESTION_ACCEPTED, SUGGESTION_REJECTED):
+            qs = qs.filter(status=status_param)
+        return qs
+
+
+class MySentSuggestionsView(generics.ListAPIView):
+    """
+    GET /my-suggestions/sent/  — Liste les suggestions QUE J'AI faites.
+
+    Filtre optionnel via ?status=pending|accepted|rejected.
+    """
+    serializer_class = PartnerSuggestionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = PartnerSuggestion.objects.filter(
+            suggested_by=self.request.user
+        ).select_related('incident', 'suggested_partner').order_by('-created_at')
+        status_param = self.request.query_params.get('status')
+        if status_param in (SUGGESTION_PENDING, SUGGESTION_ACCEPTED, SUGGESTION_REJECTED):
+            qs = qs.filter(status=status_param)
+        return qs
+
+
 class PartnerSuggestionListCreateView(generics.ListCreateAPIView):
     """
     GET  /incidents/<incident_id>/suggestions/  — liste (tous collaborateurs)

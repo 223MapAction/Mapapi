@@ -321,6 +321,17 @@ class PhoneOTPSerializer(serializers.ModelSerializer):
         fields = ['phone_number']
 
 class CollaborationSerializer(ModelSerializer):
+    # Nom de l'organisation du collaborateur (lecture seule)
+    organisation_name = serializers.CharField(
+        source='user.organisation_member.name', read_only=True, default=None
+    )
+    organisation_id = serializers.IntegerField(
+        source='user.organisation_member_id', read_only=True, default=None
+    )
+    user_full_name = serializers.SerializerMethodField()
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    incident_title = serializers.CharField(source='incident.title', read_only=True)
+
     class Meta:
         model = Collaboration
         fields = '__all__'
@@ -329,6 +340,11 @@ class CollaborationSerializer(ModelSerializer):
         # - role = 'leader' est auto-attribué quand une organisation prend l'incident ;
         #   une demande manuelle ne peut proposer que contributor/observer
         read_only_fields = ('status',)
+
+    def get_user_full_name(self, obj):
+        if obj.user:
+            return f"{obj.user.first_name or ''} {obj.user.last_name or ''}".strip() or obj.user.email
+        return None
 
     def validate_role(self, value):
         """Un utilisateur ne peut pas se déclarer leader lui-même.
@@ -586,10 +602,32 @@ class IncidentTaskSerializer(serializers.ModelSerializer):
 
 
 class PartnerSuggestionSerializer(serializers.ModelSerializer):
+    incident_title = serializers.CharField(source='incident.title', read_only=True)
+    suggested_by_name = serializers.SerializerMethodField()
+    suggested_by_organisation = serializers.CharField(
+        source='suggested_by.organisation_member.name', read_only=True, default=None
+    )
+    suggested_partner_name = serializers.SerializerMethodField()
+    suggested_partner_organisation = serializers.CharField(
+        source='suggested_partner.organisation_member.name', read_only=True, default=None
+    )
+
     class Meta:
         model = PartnerSuggestion
         fields = '__all__'
         read_only_fields = ('suggested_by', 'status', 'created_at', 'updated_at')
+
+    def get_suggested_by_name(self, obj):
+        u = obj.suggested_by
+        if not u:
+            return None
+        return f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email
+
+    def get_suggested_partner_name(self, obj):
+        u = obj.suggested_partner
+        if not u:
+            return None
+        return f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email
 
     def validate(self, data):
         incident = data.get('incident') or getattr(self.instance, 'incident', None)
