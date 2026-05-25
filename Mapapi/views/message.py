@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 
 from ..serializer import *
-from ..models import Collaboration
+from ..models import Collaboration, Incident, COLLAB_ROLE_LEADER
 from .common import CustomPageNumberPagination
 
 
@@ -241,17 +241,43 @@ class DiscussionMessageView(generics.ListCreateAPIView):
     def _get_user_collaboration(self, incident_id, user):
         """Retourne la Collaboration acceptée de l'utilisateur sur cet incident.
 
-        Le leader est identifié via role='leader' ou via incident.taken_by.
+        Tous les rôles (leader, contributor, observer) avec status='accepted'
+        peuvent participer à la discussion. Le leader désigné via
+        incident.taken_by sans entrée Collaboration est aussi autorisé : on
+        crée alors automatiquement sa Collaboration avec role='leader'.
         Lève NotFound si l'utilisateur n'est pas collaborateur accepté.
         """
+        # 1) Tente de récupérer la Collaboration existante (tous rôles confondus)
+        collab = Collaboration.objects.filter(
+            incident__id=incident_id,
+            user=user,
+            status='accepted',
+        ).first()
+        if collab:
+            return collab
+
+        # 2) Cas du leader désigné via incident.taken_by sans entrée Collaboration
         try:
-            return Collaboration.objects.get(
-                incident__id=incident_id,
+            incident = Incident.objects.get(pk=incident_id)
+        except Incident.DoesNotExist:
+            raise NotFound("Incident introuvable.")
+
+        if incident.taken_by_id == user.id:
+            # Auto-création de la Collaboration leader pour permettre la discussion
+            collab, _ = Collaboration.objects.get_or_create(
+                incident=incident,
                 user=user,
-                status='accepted',
+                defaults={
+                    'role': COLLAB_ROLE_LEADER,
+                    'status': 'accepted',
+                },
             )
-        except Collaboration.DoesNotExist:
-            raise NotFound("Vous ne participez pas à la discussion de cet incident.")
+            if collab.status != 'accepted':
+                collab.status = 'accepted'
+                collab.save(update_fields=['status'])
+            return collab
+
+        raise NotFound("Vous ne participez pas à la discussion de cet incident.")
 
     def get_queryset(self):
         incident_id = self.kwargs.get('incident_id')

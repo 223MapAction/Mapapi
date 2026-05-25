@@ -307,7 +307,7 @@ class FieldAgentCreateView(APIView):
             last_name=last_name,
             phone=phone,
             address=address,
-            user_type='citizen',
+            user_type='field_agent',
             org_role=ORG_ROLE_FIELD,
             organisation_member=org,
             is_active=True,

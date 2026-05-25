@@ -7,6 +7,7 @@ from .views.task import (
 from .views.partner_suggestion import (
     PartnerSuggestionListCreateView, PartnerSuggestionDetailView,
     PartnerSuggestionAcceptView, PartnerSuggestionRejectView,
+    MyReceivedSuggestionsView, MySentSuggestionsView,
 )
 from .views.incident import (
     TakeInChargeView, CloseIncidentView, MyIncidentsView,
@@ -200,6 +201,8 @@ urlpatterns = [
     path('incidents/<int:incident_id>/suggestions/<int:pk>/', PartnerSuggestionDetailView.as_view(), name='partner-suggestion-detail'),
     path('incidents/<int:incident_id>/suggestions/<int:pk>/accept/', PartnerSuggestionAcceptView.as_view(), name='partner-suggestion-accept'),
     path('incidents/<int:incident_id>/suggestions/<int:pk>/reject/', PartnerSuggestionRejectView.as_view(), name='partner-suggestion-reject'),
+    path('my-suggestions/received/', MyReceivedSuggestionsView.as_view(), name='my-suggestions-received'),
+    path('my-suggestions/sent/', MySentSuggestionsView.as_view(), name='my-suggestions-sent'),
 
     # --- Prise en charge et clôture d'incident ---
     path('incidents/<int:incident_id>/take_in_charge/', TakeInChargeView.as_view(), name='incident-take-in-charge'),
