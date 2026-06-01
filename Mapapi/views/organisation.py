@@ -82,10 +82,16 @@ class TenantConfigView(APIView):
         org = getattr(request, 'organisation', None)
         if org is None:
             return Response({'detail': 'Organisation not found for this subdomain.'}, status=status.HTTP_404_NOT_FOUND)
+        logo_url = None
+        if org.logo:
+            try:
+                logo_url = request.build_absolute_uri(org.logo.url)
+            except Exception:
+                logo_url = org.logo.url if hasattr(org.logo, 'url') else None
         data = {
             'name': org.name,
             'subdomain': org.subdomain,
-            'logo_url': org.logo_url,
+            'logo_url': logo_url,
             'primary_color': org.primary_color,
             'secondary_color': org.secondary_color,
             'background_color': org.background_color,
