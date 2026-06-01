@@ -168,7 +168,12 @@ class Organisation(models.Model):
     acronym = models.CharField(max_length=50, blank=True, null=True)
     is_premium = models.BooleanField(default=False)
     subdomain = models.CharField(max_length=255, unique=True)  # ex: wetlands
-    logo_url = models.URLField(null=True, blank=True)
+    logo = models.ImageField(
+        upload_to='organisations/logos/',
+        storage=ImageStorage(),
+        null=True, blank=True,
+        help_text="Logo de l'organisation (upload).",
+    )
     activity_sector = models.CharField(max_length=40, choices=ORG_ACTIVITY_SECTORS, blank=True, null=True)
     organisation_type = models.CharField(max_length=40, choices=ORG_TYPES, blank=True, null=True)
     intervention_country = models.CharField(max_length=30, choices=INTERVENTION_COUNTRIES, blank=True, null=True)
