@@ -611,11 +611,22 @@ class PartnerSuggestionSerializer(serializers.ModelSerializer):
     suggested_partner_organisation = serializers.CharField(
         source='suggested_partner.organisation_member.name', read_only=True, default=None
     )
+    # Alternative côté front : envoyer l'ID d'organisation au lieu d'un user.
+    # Le serializer résout automatiquement l'admin (ou à défaut le bureau_agent) de l'org.
+    suggested_organisation = serializers.PrimaryKeyRelatedField(
+        queryset=Organisation.objects.all(),
+        write_only=True,
+        required=False,
+    )
 
     class Meta:
         model = PartnerSuggestion
         fields = '__all__'
         read_only_fields = ('suggested_by', 'status', 'created_at', 'updated_at')
+        extra_kwargs = {
+            # suggested_partner devient optionnel : on peut envoyer suggested_organisation à la place
+            'suggested_partner': {'required': False},
+        }
 
     def get_suggested_by_name(self, obj):
         u = obj.suggested_by
@@ -636,8 +647,36 @@ class PartnerSuggestionSerializer(serializers.ModelSerializer):
                 "Impossible de suggérer un partenaire sur un incident clôturé."
             )
 
+        # Résolution organisation -> user : si le front envoie suggested_organisation,
+        # on récupère son admin (ou bureau_agent) comme suggested_partner.
+        org = data.pop('suggested_organisation', None)
         suggested_partner = data.get('suggested_partner') or getattr(
             self.instance, 'suggested_partner', None)
+
+        if org and not suggested_partner:
+            # On choisit en priorité un org_admin, sinon un bureau_agent
+            partner_user = (
+                User.objects.filter(organisation_member=org, org_role=ORG_ROLE_ADMIN).first()
+                or User.objects.filter(organisation_member=org, org_role=ORG_ROLE_BUREAU).first()
+            )
+            if not partner_user:
+                raise serializers.ValidationError({
+                    "suggested_organisation": (
+                        f"L'organisation '{org.name}' n'a aucun admin ou bureau_agent. "
+                        "Impossible de la suggérer comme partenaire."
+                    )
+                })
+            data['suggested_partner'] = partner_user
+            suggested_partner = partner_user
+
+        if not suggested_partner:
+            raise serializers.ValidationError({
+                "suggested_partner": (
+                    "Vous devez fournir 'suggested_partner' (id user) ou "
+                    "'suggested_organisation' (id organisation)."
+                )
+            })
+
         if incident and suggested_partner:
             # refuser si l'organisation est déjà collaboratrice acceptée
             already = Collaboration.objects.filter(
