@@ -92,9 +92,26 @@ class CollaborationView(generics.CreateAPIView, generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        return Collaboration.objects.filter(
+        qs = Collaboration.objects.filter(
             Q(user=user) | Q(incident__taken_by=user)
+        ).select_related(
+            'incident', 'user', 'user__organisation_member'
         ).order_by('-id')
+
+        # --- Filtres optionnels ---
+        status_param = self.request.query_params.get('status')
+        if status_param in ('pending', 'accepted', 'declined'):
+            qs = qs.filter(status=status_param)
+
+        role_param = self.request.query_params.get('role')
+        if role_param in ('leader', 'contributor', 'observer'):
+            qs = qs.filter(role=role_param)
+
+        incident_id = self.request.query_params.get('incident_id')
+        if incident_id:
+            qs = qs.filter(incident_id=incident_id)
+
+        return qs
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

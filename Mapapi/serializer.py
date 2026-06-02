@@ -456,13 +456,22 @@ class UserActionSerializer(serializers.ModelSerializer):
 class IncidentAssignmentSerializer(serializers.ModelSerializer):
     agent_name = serializers.CharField(source='agent.get_full_name', read_only=True)
     agent_email = serializers.EmailField(source='agent.email', read_only=True)
+    agent_phone = serializers.CharField(source='agent.phone', read_only=True)
     incident_title = serializers.CharField(source='incident.title', read_only=True)
     assigned_by_name = serializers.CharField(source='assigned_by.get_full_name', read_only=True)
+    assigned_by_email = serializers.EmailField(source='assigned_by.email', read_only=True)
+    # Détails complets de l'incident (lecture seule) pour que l'agent voie tout
+    incident_detail = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = IncidentAssignment
         fields = '__all__'
         read_only_fields = ('assigned_by', 'created_at', 'updated_at')
+
+    def get_incident_detail(self, obj):
+        if not obj.incident:
+            return None
+        return IncidentGetSerializer(obj.incident, context=self.context).data
 
     def validate(self, data):
         agent = data.get('agent') or (self.instance.agent if self.instance else None)

@@ -67,9 +67,13 @@ class PartnerSuggestionListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated, IsIncidentLeaderOrContributor]
 
     def get_queryset(self):
-        return PartnerSuggestion.objects.filter(
+        qs = PartnerSuggestion.objects.filter(
             incident_id=self.kwargs['incident_id']
-        )
+        ).select_related('incident', 'suggested_by', 'suggested_partner')
+        status_param = self.request.query_params.get('status')
+        if status_param in (SUGGESTION_PENDING, SUGGESTION_ACCEPTED, SUGGESTION_REJECTED):
+            qs = qs.filter(status=status_param)
+        return qs
 
     def perform_create(self, serializer):
         incident = Incident.objects.get(pk=self.kwargs['incident_id'])

@@ -25,6 +25,10 @@ from ..models import (
 )
 from ..permissions import IsIncidentLeader, IsSuperAdminOrOrgOwnIncident, IsSuperAdmin
 from ..tasks import analyze_incident_with_model_task
+from ..Send_mails import send_email
+import logging
+
+logger = logging.getLogger(__name__)
 from ..services.model_chat_client import ask_model_chat
 from .common import CustomPageNumberPagination
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -295,8 +299,63 @@ class IncidentAssignmentListCreateView(generics.ListCreateAPIView):
         data['incident'] = incident.id
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
-        serializer.save(assigned_by=request.user)
+        assignment = serializer.save(assigned_by=request.user)
+
+        # Notifier l'agent par email de sa nouvelle mission
+        self._send_assignment_email(assignment, request)
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def _send_assignment_email(assignment, request):
+        agent = assignment.agent
+        if not agent or not agent.email:
+            return
+        incident = assignment.incident
+        assigned_by = assignment.assigned_by
+
+        category_name = None
+        try:
+            if incident.category_id:
+                category_name = incident.category_id.name
+        except Exception:
+            category_name = None
+
+        org_name = None
+        if assigned_by and assigned_by.organisation_member:
+            org_name = assigned_by.organisation_member.name
+
+        context = {
+            'first_name': agent.first_name or '',
+            'last_name': agent.last_name or '',
+            'incident_title': incident.title or f"Incident #{incident.id}",
+            'incident_zone': incident.zone or '',
+            'incident_description': incident.description or '',
+            'incident_category': category_name or '',
+            'incident_etat': incident.etat or '',
+            'deadline': assignment.deadline.strftime('%d/%m/%Y à %H:%M') if assignment.deadline else 'Non définie',
+            'assigned_by_name': (
+                f"{assigned_by.first_name or ''} {assigned_by.last_name or ''}".strip()
+                or (assigned_by.email if assigned_by else 'Map Action')
+            ),
+            'organisation_name': org_name or '',
+        }
+        try:
+            send_email.delay(
+                subject="🎯 Nouvelle mission assignée - Map Action",
+                template_name='emails/agent_assignment_email.html',
+                context=context,
+                to_email=agent.email,
+            )
+            logger.info(
+                f"Email d'assignation envoyé (queue Celery) à {agent.email} "
+                f"pour l'assignation {assignment.id} sur l'incident {incident.id}"
+            )
+        except Exception as e:
+            logger.error(
+                f"Erreur envoi email d'assignation à {agent.email}: {e}",
+                exc_info=True,
+            )
 
     @staticmethod
     def _can_manage_assignment(user, incident):
