@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nouvelle mission assignée - Map Action</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333; background-color: #f4f4f4; margin: 0; padding: 0; }
+        .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 6px 20px rgba(0,0,0,0.1); }
+        .header { background: linear-gradient(135deg, #38A0DB 0%, #2c8fbd 100%); color: white; padding: 30px 20px; text-align: center; }
+        .header h1 { margin: 0; font-size: 24px; }
+        .content { padding: 30px 25px; }
+        .greeting { font-size: 18px; margin-bottom: 16px; }
+        .info-card { background-color: #f8f9fa; border-left: 4px solid #38A0DB; padding: 16px 20px; border-radius: 6px; margin: 18px 0; }
+        .info-row { display: block; padding: 6px 0; }
+        .label { color: #666; font-weight: 600; display: inline-block; min-width: 130px; }
+        .value { color: #222; }
+        .deadline-card { background-color: #fff3cd; border-left: 4px solid #f0ad4e; padding: 14px 18px; border-radius: 6px; margin: 18px 0; }
+        .description { background-color: #ffffff; border: 1px solid #e3e3e3; padding: 14px 16px; border-radius: 6px; margin-top: 8px; white-space: pre-wrap; }
+        .cta { text-align: center; margin: 28px 0 14px; }
+        .cta a { display: inline-block; background-color: #38A0DB; color: white; padding: 12px 28px; border-radius: 6px; text-decoration: none; font-weight: 600; }
+        .footer { background-color: #f8f9fa; padding: 18px; text-align: center; font-size: 12px; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Nouvelle mission assignée</h1>
+        </div>
+        <div class="content">
+            <p class="greeting">Bonjour <strong>{{ first_name }} {{ last_name }}</strong>,</p>
+
+            <p>Une nouvelle mission de terrain vous a été assignée par <strong>{{ assigned_by_name }}</strong>{% if organisation_name %} de <strong>{{ organisation_name }}</strong>{% endif %}.</p>
+
+            <div class="info-card">
+                <span class="info-row"><span class="label">Incident :</span> <span class="value">{{ incident_title }}</span></span>
+                {% if incident_zone %}<span class="info-row"><span class="label">Zone :</span> <span class="value">{{ incident_zone }}</span></span>{% endif %}
+                {% if incident_etat %}<span class="info-row"><span class="label">État :</span> <span class="value">{{ incident_etat }}</span></span>{% endif %}
+            </div>
+
+            {% if incident_description %}
+            <p><strong>Description :</strong></p>
+            <div class="description">{{ incident_description }}</div>
+            {% endif %}
+
+            <div class="deadline-card">
+                <strong>📅 Deadline :</strong> {{ deadline }}
+            </div>
+
+            <div class="info-card" style="border-left-color: #4CAF50;">
+                <strong>📱 Comment accéder à votre mission ?</strong>
+                <ol style="margin: 10px 0 0 18px; padding: 0; color: #444;">
+                    <li>Ouvrez l'application <strong>Map Action</strong> sur votre téléphone.</li>
+                    <li>Connectez-vous avec votre <strong>numéro de téléphone</strong> et votre <strong>code PIN</strong>.</li>
+                    <li>Ouvrez l'onglet <strong>« Incidents assignés »</strong> pour retrouver cet incident et soumettre votre rapport.</li>
+                </ol>
+            </div>
+
+            <p style="font-size: 13px; color: #666;">Pour toute question, contactez {{ assigned_by_name }}{% if organisation_name %} ({{ organisation_name }}){% endif %}.</p>
+        </div>
+        <div class="footer">
+            Map Action — Plateforme de gestion d'incidents environnementaux
+        </div>
+    </div>
+</body>
+</html>
