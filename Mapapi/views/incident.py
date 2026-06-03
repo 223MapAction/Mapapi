@@ -18,7 +18,8 @@ from drf_spectacular.utils import extend_schema
 
 from ..serializer import *
 from ..models import (
-    Collaboration, COLLAB_ROLE_LEADER, RESOLVED, TASK_DONE, TASK_FAILED,
+    Collaboration, COLLAB_ROLE_LEADER, COLLAB_ROLE_CONTRIBUTOR, COLLAB_ROLE_OBSERVER,
+    RESOLVED, TASK_DONE, TASK_FAILED,
     ORG_ROLE_FIELD, ORG_ROLE_ADMIN, ORG_ROLE_BUREAU,
     Prediction, PredictionStatus,
     ChatHistory, CHAT_ROLE_USER, CHAT_ROLE_ASSISTANT,
@@ -826,40 +827,59 @@ class TakeInChargeView(APIView):
         except Incident.DoesNotExist:
             return Response({"error": "Incident non trouvé."}, status=status.HTTP_404_NOT_FOUND)
 
-        if incident.taken_by is not None:
+        role = request.data.get('role', COLLAB_ROLE_LEADER)
+        if role not in [COLLAB_ROLE_LEADER, COLLAB_ROLE_CONTRIBUTOR, COLLAB_ROLE_OBSERVER]:
+            return Response({"error": "Rôle invalide."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Vérifier s'il y a déjà un leader sur l'incident (via taken_by ou collaboration leader acceptée)
+        has_leader = incident.taken_by is not None or Collaboration.objects.filter(
+            incident=incident, role=COLLAB_ROLE_LEADER, status='accepted'
+        ).exists()
+
+        if has_leader:
             return Response(
-                {"error": "Cet incident est déjà pris en charge."},
+                {"error": "Un leader est déjà désigné. Vous devez faire une demande de collaboration pour rejoindre l'incident."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if incident.etat != 'declared':
+        if incident.etat not in ['declared', 'taken_into_account']:
             return Response(
                 {"error": f"Impossible de prendre en charge un incident en état '{incident.etat}'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # Vérifier si l'utilisateur collabore déjà sur cet incident
+        if Collaboration.objects.filter(incident=incident, user=request.user, status='accepted').exists():
+            return Response(
+                {"error": "Vous collaborez déjà sur cet incident."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Prise en charge
-        incident.taken_by = request.user
+        if role == COLLAB_ROLE_LEADER:
+            incident.taken_by = request.user
         incident.etat = 'taken_into_account'
         incident.save()
 
-        # Créer la Collaboration leader accepted
-        Collaboration.objects.create(
+        # Créer la Collaboration avec le rôle choisi
+        collaboration = Collaboration.objects.create(
             incident=incident,
             user=request.user,
-            role=COLLAB_ROLE_LEADER,
+            role=role,
             status='accepted',
         )
 
         # Enregistrer l'action utilisateur
-        action_message = f"took incident {incident_id} into account as leader"
+        action_message = f"took incident {incident_id} into account as {role}"
         UserAction.objects.create(user=request.user, action=action_message)
 
         serializer = IncidentSerializer(incident)
+        collab_serializer = CollaborationSerializer(collaboration)
         return Response({
             "status": "success",
             "message": action_message,
             "data": serializer.data,
+            "collaboration": collab_serializer.data,
         }, status=status.HTTP_200_OK)
 
 

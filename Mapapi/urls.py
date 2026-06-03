@@ -2,7 +2,7 @@ from django.urls import path, include
 from .views import *
 from .views.task import (
     IncidentTaskListCreateView, IncidentTaskDetailView,
-    IncidentTaskCompleteView, IncidentTaskFailView,
+    IncidentTaskCompleteView, IncidentTaskFailView, IncidentTaskConfirmView,
 )
 from .views.partner_suggestion import (
     PartnerSuggestionListCreateView, PartnerSuggestionDetailView,
@@ -195,6 +195,7 @@ urlpatterns = [
     path('incidents/<int:incident_id>/tasks/<int:pk>/', IncidentTaskDetailView.as_view(), name='incident-task-detail'),
     path('incidents/<int:incident_id>/tasks/<int:pk>/complete/', IncidentTaskCompleteView.as_view(), name='incident-task-complete'),
     path('incidents/<int:incident_id>/tasks/<int:pk>/fail/', IncidentTaskFailView.as_view(), name='incident-task-fail'),
+    path('incidents/<int:incident_id>/tasks/<int:pk>/confirm/', IncidentTaskConfirmView.as_view(), name='incident-task-confirm'),
 
     # --- Suggestions de partenaires (CRUD + accept/reject) ---
     path('incidents/<int:incident_id>/suggestions/', PartnerSuggestionListCreateView.as_view(), name='partner-suggestion-list'),
