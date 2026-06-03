@@ -8,16 +8,16 @@ from drf_spectacular.utils import extend_schema
 
 from ..models import Incident, IncidentTask, TASK_DONE, TASK_FAILED, Collaboration
 from ..serializer import IncidentTaskSerializer
-from ..permissions import IsIncidentLeaderOrReadOnlyCollaborator, IsIncidentLeader, IsIncidentCollaborator
+from ..permissions import IsIncidentLeaderOrReadOnlyCollaborator, IsIncidentLeader, IsIncidentCollaborator, IsIncidentLeaderOrContributor
 
 
 class IncidentTaskListCreateView(generics.ListCreateAPIView):
     """
     GET  /incidents/<incident_id>/tasks/  — liste des tâches (collaborateurs acceptés)
-    POST /incidents/<incident_id>/tasks/  — créer une tâche (leader uniquement)
+    POST /incidents/<incident_id>/tasks/  — créer une tâche (leader ou contributeur)
     """
     serializer_class = IncidentTaskSerializer
-    permission_classes = [IsAuthenticated, IsIncidentLeaderOrReadOnlyCollaborator]
+    permission_classes = [IsAuthenticated, IsIncidentLeaderOrContributor]
 
     def get_queryset(self):
         return IncidentTask.objects.filter(
@@ -33,6 +33,27 @@ class IncidentTaskListCreateView(generics.ListCreateAPIView):
             incident=incident,
             created_by=self.request.user,
         )
+
+
+@extend_schema(
+    description="Confirmer une tâche créée par un contributeur (Leader uniquement).",
+    responses={200: IncidentTaskSerializer},
+)
+class IncidentTaskConfirmView(APIView):
+    """POST /incidents/<incident_id>/tasks/<pk>/confirm/"""
+    permission_classes = [IsAuthenticated, IsIncidentLeader]
+
+    def post(self, request, incident_id, pk):
+        try:
+            task = IncidentTask.objects.get(pk=pk, incident_id=incident_id)
+        except IncidentTask.DoesNotExist:
+            return Response({"error": "Tâche non trouvée."}, status=status.HTTP_404_NOT_FOUND)
+
+        task.is_confirmed = True
+        task.save()  # le save() déclenche incident.update_progress()
+
+        serializer = IncidentTaskSerializer(task)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class IncidentTaskDetailView(generics.RetrieveUpdateDestroyAPIView):

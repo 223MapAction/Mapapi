@@ -512,13 +512,14 @@ class Incident(models.Model):
         return self.zone + ' '
 
     def update_progress(self, save=True):
-        """Recalcule la progression de l'incident en fonction de ses tâches.
+        """Recalcule la progression de l'incident en fonction de ses tâches confirmées.
 
+        Seules les tâches confirmées par le leader (is_confirmed=True) sont prises en compte.
         Une tâche 'done' compte comme terminée (poids 1).
         Une tâche 'failed' est considérée comme close (poids 1) mais ne contribue pas à 100%.
         Progression = round(done / total * 100).
         """
-        tasks = self.tasks.all()
+        tasks = self.tasks.filter(is_confirmed=True)
         total = tasks.count()
         if total == 0:
             self.progress = 0
@@ -961,6 +962,11 @@ class IncidentTask(models.Model):
     assigned_to = models.ForeignKey(User, related_name='assigned_tasks', null=True, blank=True,
                                     on_delete=models.SET_NULL)
     created_by = models.ForeignKey(User, related_name='created_tasks', on_delete=models.CASCADE)
+    is_confirmed = models.BooleanField(
+        default=False,
+        help_text="True si la tâche a été confirmée par le leader. "
+                  "Seules les tâches confirmées comptent dans la progression."
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -979,7 +985,25 @@ class IncidentTask(models.Model):
         if self.state == TASK_FAILED and not self.failure_reason:
             raise ValidationError("Une tâche en échec doit avoir un motif renseigné.")
 
+    def _is_creator_leader(self):
+        """Vérifie si le créateur de la tâche est le leader de l'incident."""
+        if not self.created_by_id:
+            return False
+        # Le leader est soit via Collaboration(role=leader) soit via incident.taken_by
+        if Collaboration.objects.filter(
+            incident=self.incident,
+            user_id=self.created_by_id,
+            role=COLLAB_ROLE_LEADER,
+            status='accepted',
+        ).exists():
+            return True
+        return self.incident.taken_by_id == self.created_by_id
+
     def save(self, *args, **kwargs):
+        # Auto-confirmer si créée par le leader
+        if not self.pk and not self.is_confirmed:
+            if self._is_creator_leader():
+                self.is_confirmed = True
         super().save(*args, **kwargs)
         # met à jour la progression de l'incident après chaque sauvegarde
         try:

@@ -204,7 +204,16 @@ class HandleCollaborationRequestView(APIView):
             return Response({"error": "Invalid action"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Seul le leader de l'incident peut accepter/rejeter
-        if collaboration.incident.taken_by != request.user:
+        is_leader = (
+            collaboration.incident.taken_by == request.user or
+            Collaboration.objects.filter(
+                incident=collaboration.incident,
+                user=request.user,
+                role='leader',
+                status='accepted'
+            ).exists()
+        )
+        if not is_leader:
             return Response(
                 {"error": "Seul le leader de l'incident peut gérer les demandes de collaboration."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -229,7 +238,16 @@ class DeclineCollaborationView(APIView):
             collaboration = Collaboration.objects.get(id=collaboration_id)
 
             # Seul le leader de l'incident peut décliner
-            if collaboration.incident.taken_by != request.user:
+            is_leader = (
+                collaboration.incident.taken_by == request.user or
+                Collaboration.objects.filter(
+                    incident=collaboration.incident,
+                    user=request.user,
+                    role='leader',
+                    status='accepted'
+                ).exists()
+            )
+            if not is_leader:
                 return Response(
                     {"error": "Seul le leader de l'incident peut décliner une collaboration."},
                     status=status.HTTP_403_FORBIDDEN,
@@ -281,7 +299,16 @@ class AcceptCollaborationView(APIView):
             collaboration = Collaboration.objects.get(id=collaboration_id)
             
             # Seul le leader de l'incident peut accepter
-            if request.user != collaboration.incident.taken_by:
+            is_leader = (
+                collaboration.incident.taken_by == request.user or
+                Collaboration.objects.filter(
+                    incident=collaboration.incident,
+                    user=request.user,
+                    role='leader',
+                    status='accepted'
+                ).exists()
+            )
+            if not is_leader:
                 return Response(
                     {"error": "Seul le leader de l'incident peut accepter une collaboration."},
                     status=status.HTTP_403_FORBIDDEN

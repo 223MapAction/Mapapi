@@ -6,7 +6,6 @@ Ces permissions s'appuient sur le modèle suivant :
     une organisation et un incident, avec un rôle (leader/contributor/observer)
     et un `status` (pending/accepted/declined).
 
-Rappel : dans ce projet, une "organisation" est un `User` avec `user_type='elu'`.
 """
 from rest_framework.permissions import BasePermission, SAFE_METHODS
 
@@ -37,7 +36,10 @@ def _get_incident_from_view(view, request):
 
 
 class IsIncidentLeader(BasePermission):
-    """Autorise uniquement le leader de l'incident (Incident.taken_by)."""
+    """Autorise uniquement le leader de l'incident.
+    Le leader est déterminé par une Collaboration acceptée de rôle 'leader',
+    ou par défaut le premier utilisateur qui a pris en charge l'incident (taken_by).
+    """
 
     message = "Seul le leader de l'incident peut effectuer cette action."
 
@@ -48,12 +50,26 @@ class IsIncidentLeader(BasePermission):
         if incident is None:
             # si pas d'incident dans l'URL, on délègue à has_object_permission
             return True
+        if Collaboration.objects.filter(
+            incident=incident,
+            user=request.user,
+            role=COLLAB_ROLE_LEADER,
+            status='accepted'
+        ).exists():
+            return True
         return incident.taken_by_id == request.user.id
 
     def has_object_permission(self, request, view, obj):
         incident = getattr(obj, 'incident', obj if isinstance(obj, Incident) else None)
         if incident is None:
             return False
+        if Collaboration.objects.filter(
+            incident=incident,
+            user=request.user,
+            role=COLLAB_ROLE_LEADER,
+            status='accepted'
+        ).exists():
+            return True
         return incident.taken_by_id == request.user.id
 
 

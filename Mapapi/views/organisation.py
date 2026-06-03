@@ -393,6 +393,30 @@ class OrganisationMemberDetailView(APIView):
         except User.DoesNotExist:
             return Response({"error": "Membre non trouvé dans cette organisation."}, status=status.HTTP_404_NOT_FOUND)
 
+        # Modification des informations de l'agent
+        email = request.data.get('email')
+        if email:
+            email = email.strip().lower()
+            if User.objects.filter(email=email).exclude(pk=user_id).exists():
+                return Response({"error": "Cet email est déjà utilisé par un autre utilisateur."}, status=status.HTTP_400_BAD_REQUEST)
+            member.email = email
+
+        first_name = request.data.get('first_name')
+        if first_name is not None:
+            member.first_name = first_name.strip()
+
+        last_name = request.data.get('last_name')
+        if last_name is not None:
+            member.last_name = last_name.strip()
+
+        phone = request.data.get('phone')
+        if phone is not None:
+            phone = phone.strip()
+            # Si c'est un agent de terrain, s'assurer que le téléphone est unique parmi les agents de terrain
+            if phone and User.objects.filter(phone=phone, org_role=ORG_ROLE_FIELD).exclude(pk=user_id).exists():
+                return Response({"error": "Un agent de terrain avec ce numéro de téléphone existe déjà."}, status=status.HTTP_400_BAD_REQUEST)
+            member.phone = phone
+
         new_role = request.data.get('org_role')
         if new_role:
             if new_role not in [ORG_ROLE_ADMIN, ORG_ROLE_BUREAU, ORG_ROLE_FIELD]:
@@ -401,7 +425,8 @@ class OrganisationMemberDetailView(APIView):
             # Générer code agent si nouveau rôle terrain
             if new_role == ORG_ROLE_FIELD and not member.agent_code:
                 member.generate_agent_code()
-            member.save()
+
+        member.save()
 
         serializer = OrganisationMemberSerializer(member)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -418,8 +443,7 @@ class OrganisationMemberDetailView(APIView):
         except User.DoesNotExist:
             return Response({"error": "Membre non trouvé dans cette organisation."}, status=status.HTTP_404_NOT_FOUND)
 
-        member.organisation_member = None
-        member.org_role = None
-        member.save(update_fields=['organisation_member', 'org_role'])
+        # Supprimer physiquement l'agent
+        member.delete()
 
-        return Response({"message": "Membre retiré de l'organisation."}, status=status.HTTP_200_OK)
+        return Response({"message": "Agent supprimé avec succès de l'organisation."}, status=status.HTTP_200_OK)

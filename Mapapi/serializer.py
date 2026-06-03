@@ -320,6 +320,30 @@ class PhoneOTPSerializer(serializers.ModelSerializer):
         model = PhoneOTP
         fields = ['phone_number']
 
+class PredictionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Prediction
+        fields = '__all__'
+        read_only_fields = (
+            'status', 'macro_category', 'sub_category', 'description',
+            'source_size_meters', 'spread_vectors',
+            'impact_radius_meters', 'radius_explanation',
+            'global_impact_score', 'base_severity', 'impact_tags',
+            'recommendation',
+            'latitude', 'longitude',
+            'city', 'region', 'country', 'display_name',
+            'social_vulnerability_score', 'is_social_probabilistic',
+            'total_population_exposed', 'adult_men_exposed',
+            'adult_women_exposed', 'children_exposed',
+            'maternities_count', 'nurseries_count',
+            'health_centers', 'maternities', 'schools', 'nurseries',
+            'markets', 'water_points', 'main_roads_bridges',
+            'residential_buildings',
+            'ai_analysis', 'topography', 'satellite', 'social_data',
+            'human_impact', 'geocoding', 'potential_risk', 'full_response',
+            'error_message', 'created_at', 'updated_at',
+        )
+
 class CollaborationSerializer(ModelSerializer):
     # Nom de l'organisation du collaborateur (lecture seule)
     organisation_name = serializers.CharField(
@@ -331,6 +355,8 @@ class CollaborationSerializer(ModelSerializer):
     user_full_name = serializers.SerializerMethodField()
     user_email = serializers.EmailField(source='user.email', read_only=True)
     incident_title = serializers.CharField(source='incident.title', read_only=True)
+    incident_details = IncidentSerializer(source='incident', read_only=True)
+    prediction_details = PredictionSerializer(source='incident.prediction', read_only=True)
 
     class Meta:
         model = Collaboration
@@ -411,29 +437,6 @@ class ColaborationSerializer(serializers.ModelSerializer):
         model = Colaboration
         fields = '__all__'
 
-class PredictionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Prediction
-        fields = '__all__'
-        read_only_fields = (
-            'status', 'macro_category', 'sub_category', 'description',
-            'source_size_meters', 'spread_vectors',
-            'impact_radius_meters', 'radius_explanation',
-            'global_impact_score', 'base_severity', 'impact_tags',
-            'recommendation',
-            'latitude', 'longitude',
-            'city', 'region', 'country', 'display_name',
-            'social_vulnerability_score', 'is_social_probabilistic',
-            'total_population_exposed', 'adult_men_exposed',
-            'adult_women_exposed', 'children_exposed',
-            'maternities_count', 'nurseries_count',
-            'health_centers', 'maternities', 'schools', 'nurseries',
-            'markets', 'water_points', 'main_roads_bridges',
-            'residential_buildings',
-            'ai_analysis', 'topography', 'satellite', 'social_data',
-            'human_impact', 'geocoding', 'potential_risk', 'full_response',
-            'error_message', 'created_at', 'updated_at',
-        )
 
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -576,7 +579,7 @@ class IncidentTaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = IncidentTask
         fields = '__all__'
-        read_only_fields = ('created_by', 'created_at', 'updated_at')
+        read_only_fields = ('created_by', 'created_at', 'updated_at', 'is_confirmed')
 
     def validate(self, data):
         # Refus d'ajouter/modifier une tâche sur un incident clôturé
