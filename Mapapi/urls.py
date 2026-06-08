@@ -27,7 +27,7 @@ from .views.collaboration import (
 from .views.organisation import (
     OrganisationMemberListView, OrganisationMemberCreateView,
     OrganisationMemberDetailView, OrganisationDetailView,
-    FieldAgentCreateView,
+    FieldAgentCreateView, StaffAccountCreateView,
 )
 from .ivr_views import (
     TwilioIVRWebhook, SelectZoneView, SelectCategoryView,
@@ -57,6 +57,7 @@ urlpatterns = [
     path('organisations/<int:pk>/members/add/', OrganisationMemberCreateView.as_view(), name='organisation-members-add'),
     path('organisations/<int:pk>/members/<int:user_id>/', OrganisationMemberDetailView.as_view(), name='organisation-members-detail'),
     path('organisations/<int:pk>/agents/create/', FieldAgentCreateView.as_view(), name='organisation-field-agent-create'),
+    path('organisations/<int:pk>/staff/create/', StaffAccountCreateView.as_view(), name='organisation-staff-create'),
     # URL PATTERNS for the documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     # Optional UI:

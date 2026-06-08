@@ -447,3 +447,144 @@ class OrganisationMemberDetailView(APIView):
         member.delete()
 
         return Response({"message": "Agent supprimé avec succès de l'organisation."}, status=status.HTTP_200_OK)
+
+
+ORG_ROLE_LABELS = {
+    ORG_ROLE_ADMIN: "Administrateur d'organisation",
+    ORG_ROLE_BUREAU: "Agent de bureau",
+    ORG_ROLE_FIELD: "Agent de terrain",
+}
+
+
+@extend_schema(
+    description=(
+        "Crée un utilisateur staff (admin ou agent de bureau) pour l'organisation. "
+        "Génère un mot de passe temporaire et envoie un email avec les identifiants, "
+        "le rôle et l'organisation. Le frontend force le changement de mot de passe à "
+        "la première connexion."
+    ),
+    request={
+        'application/json': {
+            'type': 'object',
+            'required': ['first_name', 'last_name', 'email', 'org_role'],
+            'properties': {
+                'first_name': {'type': 'string'},
+                'last_name': {'type': 'string'},
+                'email': {'type': 'string', 'format': 'email'},
+                'phone': {'type': 'string'},
+                'address': {'type': 'string'},
+                'org_role': {'type': 'string', 'enum': [ORG_ROLE_ADMIN, ORG_ROLE_BUREAU]},
+            },
+        }
+    },
+    responses={201: OrganisationMemberSerializer},
+)
+class StaffAccountCreateView(APIView):
+    """POST /organisations/<pk>/staff/create/
+
+    Crée un compte staff (admin/bureau_agent), génère un mot de passe temporaire,
+    et envoie un email avec les identifiants.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        user = request.user
+
+        # Permissions : admin de l'org ou superadmin (un bureau_agent ne crée pas d'admin)
+        if not (user.is_staff or (
+            user.organisation_member_id == pk
+            and user.org_role == ORG_ROLE_ADMIN
+        )):
+            return Response(
+                {"error": "Seul un administrateur d'organisation peut créer un compte staff."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            org = Organisation.objects.get(pk=pk)
+        except Organisation.DoesNotExist:
+            return Response({"error": "Organisation non trouvée."}, status=status.HTTP_404_NOT_FOUND)
+
+        first_name = (request.data.get('first_name') or '').strip()
+        last_name = (request.data.get('last_name') or '').strip()
+        email = (request.data.get('email') or '').strip().lower()
+        phone = (request.data.get('phone') or '').strip()
+        address = (request.data.get('address') or '').strip()
+        org_role = (request.data.get('org_role') or '').strip()
+
+        missing = [f for f, v in {
+            'first_name': first_name,
+            'last_name': last_name,
+            'email': email,
+            'org_role': org_role,
+        }.items() if not v]
+        if missing:
+            return Response(
+                {"error": f"Champs requis manquants : {', '.join(missing)}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if org_role not in (ORG_ROLE_ADMIN, ORG_ROLE_BUREAU):
+            return Response(
+                {"error": "org_role doit être 'org_admin' ou 'bureau_agent'. Pour un agent de terrain, utilisez /organisations/<pk>/agents/create/."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if User.objects.filter(email=email).exists():
+            return Response(
+                {"error": "Un utilisateur avec cet email existe déjà."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Génération mot de passe temporaire
+        temp_password = ''.join(random.choices(
+            string.ascii_letters + string.digits + '!@#$%', k=12
+        ))
+
+        member = User(
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            phone=phone or None,
+            address=address or None,
+            user_type='admin' if org_role == ORG_ROLE_ADMIN else 'citizen',
+            org_role=org_role,
+            organisation_member=org,
+            is_active=True,
+            is_verified=True,
+        )
+        member.set_password(temp_password)
+        member.save()
+
+        # Envoi email
+        email_sent = False
+        email_error = None
+        try:
+            context = {
+                'first_name': member.first_name,
+                'last_name': member.last_name,
+                'email': member.email,
+                'password': temp_password,
+                'role_label': ORG_ROLE_LABELS.get(org_role, org_role),
+                'organisation_name': org.name,
+            }
+            send_email.delay(
+                subject=f'🌍 Bienvenue sur Map Action — Compte {ORG_ROLE_LABELS.get(org_role, org_role)}',
+                template_name='emails/staff_account_email.html',
+                context=context,
+                to_email=member.email,
+            )
+            email_sent = True
+            logger.info(f"Email staff envoyé (queue Celery) à {member.email} pour user {member.id}")
+        except Exception as e:
+            email_error = str(e)
+            logger.error(f"Erreur envoi email staff à {member.email}: {e}", exc_info=True)
+
+        response_data = OrganisationMemberSerializer(member).data
+        response_data.update({
+            'email_sent': email_sent,
+            'must_change_password': True,
+        })
+        if email_error:
+            response_data['email_error'] = email_error
+        return Response(response_data, status=status.HTTP_201_CREATED)
