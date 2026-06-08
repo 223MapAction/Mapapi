@@ -9,7 +9,10 @@ from rest_framework.views import APIView
 
 from drf_spectacular.utils import extend_schema
 
-from ..models import Collaboration, Incident, Notification, COLLAB_ROLE_LEADER
+from ..models import (
+    Collaboration, Incident, Notification,
+    COLLAB_ROLE_LEADER, COLLAB_ROLE_CONTRIBUTOR, COLLAB_ROLE_OBSERVER,
+)
 from ..serializer import CollaborationSerializer, CollaborationEnrichedSerializer
 from ..Send_mails import send_email
 from .common import CustomPageNumberPagination
@@ -115,14 +118,44 @@ class CollaborationView(generics.CreateAPIView, generics.ListAPIView):
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        if serializer.is_valid():
-            # Le rôle est validé par le serializer (pas de 'leader' autorisé)
-            collaboration = serializer.save(user=request.user, status='pending')
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        incident = serializer.validated_data.get('incident')
+        role = serializer.validated_data.get('role')
+
+        # Empêcher doublon
+        if Collaboration.objects.filter(incident=incident, user=request.user).exists():
             return Response(
-                CollaborationSerializer(collaboration).data,
-                status=status.HTTP_201_CREATED,
+                {"error": "Vous avez déjà une collaboration sur cet incident."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # --- Détermination du statut initial ---
+        # Observer : toujours auto-accepté (toute org a le droit d'observer)
+        # Contributor : auto-accepté si pas de leader désigné, sinon pending
+        # En mode 'internal' : la collab arrive en pending (le propriétaire décide,
+        #   et l'acceptation fait basculer l'incident en mode collaborative)
+        if incident.take_in_charge_mode == 'internal':
+            collab_status = 'pending'
+        elif role == COLLAB_ROLE_OBSERVER:
+            collab_status = 'accepted'
+        elif role == COLLAB_ROLE_CONTRIBUTOR:
+            collab_status = 'accepted' if incident.taken_by is None else 'pending'
+        else:
+            collab_status = 'pending'
+
+        collaboration = serializer.save(user=request.user, status=collab_status)
+
+        # Si pas encore de mode (incident jamais pris en charge), passer en collaborative
+        if incident.take_in_charge_mode is None and collab_status == 'accepted':
+            incident.take_in_charge_mode = 'collaborative'
+            incident.save(update_fields=['take_in_charge_mode'])
+
+        return Response(
+            CollaborationSerializer(collaboration).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 @extend_schema(
@@ -222,6 +255,12 @@ class HandleCollaborationRequestView(APIView):
         if action == "accept":
             collaboration.status = 'accepted'
             collaboration.save()
+            # Si l'incident était en mode internal, accepter une collab externe
+            # le fait basculer en mode collaborative
+            incident = collaboration.incident
+            if incident.take_in_charge_mode == 'internal':
+                incident.take_in_charge_mode = 'collaborative'
+                incident.save(update_fields=['take_in_charge_mode'])
             return Response({"status": "Collaboration accepted"}, status=status.HTTP_200_OK)
         elif action == "reject":
             collaboration.status = 'declined'
@@ -330,7 +369,13 @@ class AcceptCollaborationView(APIView):
             
             collaboration.status = 'accepted'
             collaboration.save()
-            
+
+            # Bascule éventuelle internal → collaborative
+            incident = collaboration.incident
+            if incident.take_in_charge_mode == 'internal':
+                incident.take_in_charge_mode = 'collaborative'
+                incident.save(update_fields=['take_in_charge_mode'])
+
             return Response(
                 {"message": "Collaboration acceptée avec succès"},
                 status=status.HTTP_200_OK

@@ -245,8 +245,35 @@ class DiscussionMessageView(generics.ListCreateAPIView):
         peuvent participer à la discussion. Le leader désigné via
         incident.taken_by sans entrée Collaboration est aussi autorisé : on
         crée alors automatiquement sa Collaboration avec role='leader'.
+
+        En mode 'internal' : seuls les membres de l'organisation propriétaire
+        (celle de incident.taken_by) peuvent participer.
+
         Lève NotFound si l'utilisateur n'est pas collaborateur accepté.
         """
+        try:
+            incident = Incident.objects.get(pk=incident_id)
+        except Incident.DoesNotExist:
+            raise NotFound("Incident introuvable.")
+
+        # --- Mode INTERNAL : restreint aux membres de l'org propriétaire ---
+        if incident.take_in_charge_mode == 'internal':
+            owner = incident.taken_by
+            if not owner or not owner.organisation_member_id:
+                raise NotFound("Discussion indisponible pour cet incident.")
+            if user.organisation_member_id != owner.organisation_member_id:
+                raise NotFound("Cet incident est en mode interne, réservé à l'organisation qui l'a pris en charge.")
+            # Auto-crée une collaboration leader/accepted pour les membres de l'org propriétaire
+            collab, _ = Collaboration.objects.get_or_create(
+                incident=incident,
+                user=user,
+                defaults={'role': COLLAB_ROLE_LEADER, 'status': 'accepted'},
+            )
+            if collab.status != 'accepted':
+                collab.status = 'accepted'
+                collab.save(update_fields=['status'])
+            return collab
+
         # 1) Tente de récupérer la Collaboration existante (tous rôles confondus)
         collab = Collaboration.objects.filter(
             incident__id=incident_id,
@@ -257,11 +284,6 @@ class DiscussionMessageView(generics.ListCreateAPIView):
             return collab
 
         # 2) Cas du leader désigné via incident.taken_by sans entrée Collaboration
-        try:
-            incident = Incident.objects.get(pk=incident_id)
-        except Incident.DoesNotExist:
-            raise NotFound("Incident introuvable.")
-
         if incident.taken_by_id == user.id:
             # Auto-création de la Collaboration leader pour permettre la discussion
             collab, _ = Collaboration.objects.get_or_create(

@@ -813,8 +813,17 @@ class IncidentUserView(APIView):
 
 
 @extend_schema(
-    description="Prise en charge d'un incident par une organisation. "
-                "L'utilisateur devient leader et une Collaboration 'leader/accepted' est créée.",
+    description=(
+        "Prise en charge d'un incident.\n\n"
+        "Body JSON :\n"
+        "- mode = 'internal' : prise en charge interne (visible uniquement par les membres de l'organisation).\n"
+        "- mode = 'collaborative' : prise en charge collaborative ouverte aux autres organisations. "
+        "Doit alors préciser role = 'leader' | 'contributor' | 'observer'.\n\n"
+        "Règles :\n"
+        "- observer est auto-accepté.\n"
+        "- contributor est auto-accepté tant qu'aucun leader n'est désigné ; sinon il passe en pending.\n"
+        "- leader définit incident.taken_by et remet les contributors déjà acceptés en pending pour validation."
+    ),
     responses={200: IncidentSerializer},
 )
 class TakeInChargeView(APIView):
@@ -827,59 +836,149 @@ class TakeInChargeView(APIView):
         except Incident.DoesNotExist:
             return Response({"error": "Incident non trouvé."}, status=status.HTTP_404_NOT_FOUND)
 
-        role = request.data.get('role', COLLAB_ROLE_LEADER)
-        if role not in [COLLAB_ROLE_LEADER, COLLAB_ROLE_CONTRIBUTOR, COLLAB_ROLE_OBSERVER]:
-            return Response({"error": "Rôle invalide."}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Vérifier s'il y a déjà un leader sur l'incident (via taken_by ou collaboration leader acceptée)
-        has_leader = incident.taken_by is not None or Collaboration.objects.filter(
-            incident=incident, role=COLLAB_ROLE_LEADER, status='accepted'
-        ).exists()
-
-        if has_leader:
+        if incident.is_resolved:
             return Response(
-                {"error": "Un leader est déjà désigné. Vous devez faire une demande de collaboration pour rejoindre l'incident."},
+                {"error": "Cet incident est clôturé."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if incident.etat not in ['declared', 'taken_into_account']:
+        mode = (request.data.get('mode') or '').strip().lower()
+        if mode not in ('internal', 'collaborative'):
             return Response(
-                {"error": f"Impossible de prendre en charge un incident en état '{incident.etat}'."},
+                {"error": "mode requis : 'internal' ou 'collaborative'."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Vérifier si l'utilisateur collabore déjà sur cet incident
-        if Collaboration.objects.filter(incident=incident, user=request.user, status='accepted').exists():
-            return Response(
-                {"error": "Vous collaborez déjà sur cet incident."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        # ============== MODE INTERNAL ==============
+        if mode == 'internal':
+            if incident.taken_by is not None or incident.take_in_charge_mode is not None:
+                return Response(
+                    {"error": "Cet incident a déjà été pris en charge."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if incident.etat != 'declared':
+                return Response(
+                    {"error": f"Impossible de prendre en charge un incident en état '{incident.etat}'."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-        # Prise en charge
-        if role == COLLAB_ROLE_LEADER:
             incident.taken_by = request.user
-        incident.etat = 'taken_into_account'
-        incident.save()
+            incident.etat = 'taken_into_account'
+            incident.take_in_charge_mode = 'internal'
+            incident.save(update_fields=['taken_by', 'etat', 'take_in_charge_mode'])
 
-        # Créer la Collaboration avec le rôle choisi
+            collaboration, _ = Collaboration.objects.get_or_create(
+                incident=incident,
+                user=request.user,
+                defaults={'role': COLLAB_ROLE_LEADER, 'status': 'accepted'},
+            )
+
+            action_message = f"took incident {incident_id} into account in internal mode"
+            UserAction.objects.create(user=request.user, action=action_message)
+
+            return Response({
+                "status": "success",
+                "message": action_message,
+                "mode": "internal",
+                "data": IncidentSerializer(incident).data,
+                "collaboration": CollaborationSerializer(collaboration).data,
+            }, status=status.HTTP_200_OK)
+
+        # ============== MODE COLLABORATIVE ==============
+        role = (request.data.get('role') or '').strip().lower()
+        if role not in (COLLAB_ROLE_LEADER, COLLAB_ROLE_CONTRIBUTOR, COLLAB_ROLE_OBSERVER):
+            return Response(
+                {"error": "role requis pour le mode collaborative : 'leader', 'contributor' ou 'observer'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Si l'incident est en mode internal, refuser : passer par /collaboration/ pour demander
+        if incident.take_in_charge_mode == 'internal':
+            return Response(
+                {"error": "Cet incident est en mode interne. Faites une demande via POST /collaboration/."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Empêcher doublon de collaboration pour ce user
+        existing = Collaboration.objects.filter(incident=incident, user=request.user).first()
+        if existing:
+            return Response(
+                {"error": "Vous avez déjà une collaboration sur cet incident.",
+                 "collaboration_id": existing.id,
+                 "status": existing.status,
+                 "role": existing.role},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # --- Rôle LEADER ---
+        if role == COLLAB_ROLE_LEADER:
+            if incident.taken_by is not None:
+                return Response(
+                    {"error": "Un leader est déjà désigné sur cet incident."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            incident.taken_by = request.user
+            if incident.etat == 'declared':
+                incident.etat = 'taken_into_account'
+            incident.take_in_charge_mode = 'collaborative'
+            incident.save(update_fields=['taken_by', 'etat', 'take_in_charge_mode'])
+
+            collaboration = Collaboration.objects.create(
+                incident=incident,
+                user=request.user,
+                role=COLLAB_ROLE_LEADER,
+                status='accepted',
+            )
+
+            # Remettre en pending les contributors déjà acceptés (le nouveau leader doit les valider)
+            reset_count = Collaboration.objects.filter(
+                incident=incident,
+                role=COLLAB_ROLE_CONTRIBUTOR,
+                status='accepted',
+            ).exclude(user=request.user).update(status='pending')
+
+            action_message = f"took incident {incident_id} into account as leader (collaborative)"
+            UserAction.objects.create(user=request.user, action=action_message)
+
+            return Response({
+                "status": "success",
+                "message": action_message,
+                "mode": "collaborative",
+                "role": role,
+                "contributors_reset_to_pending": reset_count,
+                "data": IncidentSerializer(incident).data,
+                "collaboration": CollaborationSerializer(collaboration).data,
+            }, status=status.HTTP_200_OK)
+
+        # --- Rôle OBSERVER ou CONTRIBUTOR ---
+        if role == COLLAB_ROLE_OBSERVER:
+            collab_status = 'accepted'
+        else:  # contributor
+            collab_status = 'accepted' if incident.taken_by is None else 'pending'
+
         collaboration = Collaboration.objects.create(
             incident=incident,
             user=request.user,
             role=role,
-            status='accepted',
+            status=collab_status,
         )
 
-        # Enregistrer l'action utilisateur
-        action_message = f"took incident {incident_id} into account as {role}"
+        if incident.take_in_charge_mode is None:
+            incident.take_in_charge_mode = 'collaborative'
+            incident.save(update_fields=['take_in_charge_mode'])
+
+        action_message = f"joined incident {incident_id} as {role} ({collab_status})"
         UserAction.objects.create(user=request.user, action=action_message)
 
-        serializer = IncidentSerializer(incident)
-        collab_serializer = CollaborationSerializer(collaboration)
         return Response({
             "status": "success",
             "message": action_message,
-            "data": serializer.data,
-            "collaboration": collab_serializer.data,
+            "mode": "collaborative",
+            "role": role,
+            "collaboration_status": collab_status,
+            "data": IncidentSerializer(incident).data,
+            "collaboration": CollaborationSerializer(collaboration).data,
         }, status=status.HTTP_200_OK)
 
 

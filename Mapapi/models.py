@@ -496,6 +496,15 @@ class Incident(models.Model):
     category_ids = models.ManyToManyField('Category', blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     taken_by = models.ForeignKey(User, related_name='taken_incidents', null=True, blank=True, on_delete=models.SET_NULL)
+    # Mode de prise en charge : 'internal' (org seule en interne) ou 'collaborative' (ouvert aux autres orgs)
+    TAKE_IN_CHARGE_MODES = (
+        ('internal', 'Interne (organisation seule)'),
+        ('collaborative', 'Collaborative (ouvert aux autres organisations)'),
+    )
+    take_in_charge_mode = models.CharField(
+        max_length=20, choices=TAKE_IN_CHARGE_MODES, null=True, blank=True,
+        help_text="Mode de prise en charge choisi par la première organisation."
+    )
     # --- Spec : suivi résolution incident ---
     resolution_start_date = models.DateField(null=True, blank=True,
                                              help_text="Date de début de la résolution. Obligatoire à la clôture.")
