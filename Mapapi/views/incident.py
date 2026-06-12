@@ -253,6 +253,7 @@ class OrgIncidentsView(generics.ListAPIView):
             return Incident.objects.none()
 
         source = self.request.query_params.get('source', 'all')
+        mode = self.request.query_params.get('mode', None)
         # IDs des agents de terrain de l'org
         agent_ids = org.members.filter(org_role=ORG_ROLE_FIELD).values_list('id', flat=True)
 
@@ -263,7 +264,10 @@ class OrgIncidentsView(generics.ListAPIView):
         elif source == 'citizens':
             qs = qs.exclude(user_id__in=agent_ids)
         # source == 'all' : pas de filtre supplémentaire
-
+    
+        if mode == 'internal':
+            qs = qs.filter(take_in_charge_mode='internal')
+        
         return qs.order_by('-created_at')
 
 
