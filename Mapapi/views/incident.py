@@ -265,8 +265,7 @@ class OrgIncidentsView(generics.ListAPIView):
             qs = qs.exclude(user_id__in=agent_ids)
         # source == 'all' : pas de filtre supplémentaire
     
-        if mode == 'internal':
-            qs = qs.filter(take_in_charge_mode='internal')
+        qs = qs.filter(take_in_charge_mode__iexact='internal').exclude(take_in_charge_mode__isnull=True)
         
         return qs.order_by('-created_at')
 
