@@ -259,14 +259,35 @@ class OrgIncidentsView(generics.ListAPIView):
 
         qs = Incident.objects.select_related('user_id', 'category_id')
 
-        if source == 'agents':
+        org_members = org.members.all()
+
+        if source == 'agents_or_internal':
+            # Option B: Logique OU (Incidents créés par les agents de l'org OU pris en interne par l'org)
+            qs = qs.filter(
+                Q(user_id__in=agent_ids) |
+                Q(take_in_charge_mode__iexact='internal', taken_by__in=org_members)
+            )
+            # Désactiver le filtre mode strict car il casserait l'union "OU"
+            mode = None 
+        elif source == 'agents':
             qs = qs.filter(user_id__in=agent_ids)
         elif source == 'citizens':
             qs = qs.exclude(user_id__in=agent_ids)
         # source == 'all' : pas de filtre supplémentaire
-    
-        qs = qs.filter(take_in_charge_mode__iexact='internal').exclude(take_in_charge_mode__isnull=True)
-        
+
+        # Règle de sécurité globale : on masque les incidents 'internal' qui appartiennent à D'AUTRES organisations
+        qs = qs.filter(
+            Q(take_in_charge_mode__isnull=True) |
+            ~Q(take_in_charge_mode__iexact='internal') |
+            Q(take_in_charge_mode__iexact='internal', taken_by__in=org_members)
+        )
+
+        # Si le front-end demande explicitement un filtre mode additionnel (uniquement si ce n'est pas l'Option B)
+        if mode == 'internal':
+            qs = qs.filter(take_in_charge_mode__iexact='internal', taken_by__in=org_members)
+        elif mode:
+            qs = qs.filter(take_in_charge_mode__iexact=mode)
+            
         return qs.order_by('-created_at')
 
 
