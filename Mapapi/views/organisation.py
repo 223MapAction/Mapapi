@@ -18,6 +18,7 @@ from drf_spectacular.utils import extend_schema
 from ..models import Organisation, User, Incident, ORG_ROLE_ADMIN, ORG_ROLE_BUREAU, ORG_ROLE_FIELD
 from ..serializer import OrganisationSerializer, OrganisationMemberSerializer
 from ..Send_mails import send_email
+from .user import send_sms
 
 
 class OrganisationViewSet(generics.ListCreateAPIView, generics.RetrieveUpdateDestroyAPIView):
@@ -349,12 +350,25 @@ class FieldAgentCreateView(APIView):
             email_error = str(e)
             logger.error(f"Erreur envoi email PIN à {member.email}: {e}", exc_info=True)
 
+        # Envoi du SMS avec le PIN
+        sms_sent = False
+        try:
+            sms_message = f"Bienvenue sur Map Action. Votre code PIN de connexion est : {initial_pin}"
+            sms_sent = send_sms(member.phone, sms_message)
+            if sms_sent:
+                logger.info(f"SMS PIN envoyé à {member.phone} pour l'agent {member.id}")
+            else:
+                logger.error(f"Echec envoi SMS PIN à {member.phone} pour l'agent {member.id}")
+        except Exception as e:
+            logger.error(f"Erreur exception envoi SMS PIN à {member.phone}: {e}", exc_info=True)
+
         serializer = OrganisationMemberSerializer(member)
         response_data = serializer.data
         response_data.update({
             'initial_pin': initial_pin,
             'must_change_pin': member.must_change_pin,
             'email_sent': email_sent,
+            'sms_sent': sms_sent,
         })
         if email_error:
             response_data['email_error'] = email_error

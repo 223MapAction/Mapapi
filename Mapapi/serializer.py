@@ -726,3 +726,104 @@ class PartnerSuggestionSerializer(serializers.ModelSerializer):
         return data
 
 
+class IncidentTaskResolvedSerializer(serializers.ModelSerializer):
+    """Tâche enrichie avec les infos de l'organisation qui l'a créée."""
+    organisation_name = serializers.CharField(
+        source='created_by.organisation_member.name', read_only=True, default=None
+    )
+    organisation_id = serializers.IntegerField(
+        source='created_by.organisation_member.id', read_only=True, default=None
+    )
+    assigned_to_name = serializers.CharField(
+        source='assigned_to.get_full_name', read_only=True, default=None
+    )
+    created_by_name = serializers.CharField(
+        source='created_by.get_full_name', read_only=True
+    )
+
+    class Meta:
+        model = IncidentTask
+        fields = [
+            'id', 'title', 'description',
+            'start_date', 'end_date', 'state',
+            'is_confirmed', 'proof_image', 'proof_video', 'failure_reason',
+            'organisation_id', 'organisation_name',
+            'assigned_to', 'assigned_to_name',
+            'created_by', 'created_by_name',
+            'created_at', 'updated_at',
+        ]
+
+
+class IncidentResolvedSerializer(serializers.ModelSerializer):
+    """
+    Sérialiseur complet pour les incidents résolus.
+    - prediction : données d'analyse complètes
+    - organisations : liste des organisations impliquées (via Collaboration acceptée)
+    - tasks_by_organisation : tâches regroupées par organisation
+    """
+    prediction = PredictionSerializer(read_only=True)
+    category_name = serializers.CharField(source='category_id.name', read_only=True, default=None)
+    reporter_name = serializers.CharField(source='user_id.get_full_name', read_only=True, default=None)
+    reporter_email = serializers.EmailField(source='user_id.email', read_only=True, default=None)
+    taken_by_name = serializers.CharField(source='taken_by.get_full_name', read_only=True, default=None)
+    taken_by_organisation = serializers.CharField(
+        source='taken_by.organisation_member.name', read_only=True, default=None
+    )
+    organisations = serializers.SerializerMethodField()
+    tasks_by_organisation = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Incident
+        fields = [
+            'id', 'title', 'description', 'zone', 'lattitude', 'longitude',
+            'etat', 'take_in_charge_mode', 'progress',
+            'created_at', 'resolution_end_date',
+            'category_id', 'category_name',
+            'reporter_name', 'reporter_email',
+            'taken_by', 'taken_by_name', 'taken_by_organisation',
+            'prediction',
+            'organisations',
+            'tasks_by_organisation',
+        ]
+
+    def get_organisations(self, obj):
+        """Retourne la liste de toutes les organisations impliquées (Collaborations acceptées)."""
+        collabs = obj.collaboration_set.filter(status='accepted').select_related(
+            'user__organisation_member'
+        )
+        result = []
+        seen_org_ids = set()
+        for c in collabs:
+            org = getattr(c.user, 'organisation_member', None)
+            if org and org.id not in seen_org_ids:
+                seen_org_ids.add(org.id)
+                result.append({
+                    'id': org.id,
+                    'name': org.name,
+                    'role': c.role,
+                })
+        return result
+
+    def get_tasks_by_organisation(self, obj):
+        """Retourne les tâches de l'incident regroupées par organisation."""
+        tasks = obj.tasks.select_related(
+            'created_by__organisation_member', 'assigned_to'
+        ).all()
+
+        grouped = {}
+        for task in tasks:
+            org = getattr(task.created_by, 'organisation_member', None)
+            org_key = org.id if org else 'sans_organisation'
+            org_name = org.name if org else 'Sans organisation'
+
+            if org_key not in grouped:
+                grouped[org_key] = {
+                    'organisation_id': org.id if org else None,
+                    'organisation_name': org_name,
+                    'tasks': [],
+                }
+            grouped[org_key]['tasks'].append(
+                IncidentTaskResolvedSerializer(task).data
+            )
+
+        return list(grouped.values())
