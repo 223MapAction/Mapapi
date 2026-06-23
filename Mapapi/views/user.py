@@ -492,12 +492,12 @@ class PhoneOTPView(generics.CreateAPIView):
         if not phone_number:
             raise ValidationError("Le numéro de téléphone est requis.")
         otp_code = self.generate_otp(phone_number)
-        if send_sms(phone_number, otp_code):
+        if send_sms(phone_number, f"Votre code de vérification OTP est : {otp_code}"):
             return Response({'otp_code': otp_code}, status=status.HTTP_201_CREATED)
         else:
             return Response({'message': 'Erreur lors de l\'envoi du SMS'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-def send_sms(phone_number, otp_code):
+def send_sms(phone_number, message_text):
     """Envoi SMS via Orange Mali SMS API."""
     try:
         # Get access token
@@ -543,7 +543,7 @@ def send_sms(phone_number, otp_code):
                 "address": recipient,
                 "senderAddress": sender_address,
                 "outboundSMSTextMessage": {
-                    "message": f"Votre code de vérification OTP est : {otp_code}"
+                    "message": message_text
                 }
             }
         }
@@ -601,7 +601,7 @@ class RequestOTPView(APIView):
 
         user.generate_otp()
 
-        if send_sms(phone, user.otp):
+        if send_sms(phone, f"Votre code de vérification OTP est : {user.otp}"):
             return Response({"message": "OTP envoyé."}, status=status.HTTP_200_OK)
         else:
             return Response({"message": "Erreur lors de l'envoi du SMS"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

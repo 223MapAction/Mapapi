@@ -154,6 +154,11 @@ DATABASES = {
         'USER': os.environ.get("POSTGRES_USER"),
         'PASSWORD': os.environ.get("POSTGRES_PASSWORD"),
         'PORT': os.environ.get("PORT"),
+        # Connexions persistantes : réutilise la même connexion TLS au lieu d'en ouvrir
+        # une nouvelle à chaque requête (~0.6s gagnées). CONN_HEALTH_CHECKS vérifie
+        # que la connexion est toujours valide avant réutilisation (compatible PgBouncer).
+        'CONN_MAX_AGE': int(os.environ.get("DB_CONN_MAX_AGE", 60)),  # secondes
+        'CONN_HEALTH_CHECKS': True,
         'OPTIONS': {
             'sslmode': 'require',
         },

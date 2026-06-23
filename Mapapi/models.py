@@ -486,7 +486,7 @@ class Incident(models.Model):
     longitude = models.CharField(max_length=250, blank=True,
                                  null=True)
     etat = models.CharField(
-        max_length=255, choices=ETAT_INCIDENT, blank=False, null=False, default=DECLARED)
+        max_length=255, choices=ETAT_INCIDENT, blank=False, null=False, default=DECLARED, db_index=True)
     category_id = models.ForeignKey('Category', db_column='categ_incid_id', related_name='user_category',
                                     on_delete=models.CASCADE, null=True)
     indicateur_id = models.ForeignKey('Indicateur', db_column='indic_incid_id', related_name='user_indicateur',
@@ -494,7 +494,7 @@ class Incident(models.Model):
     slug = models.CharField(max_length=250, blank=True,
                             null=True)
     category_ids = models.ManyToManyField('Category', blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     taken_by = models.ForeignKey(User, related_name='taken_incidents', null=True, blank=True, on_delete=models.SET_NULL)
     # Mode de prise en charge : 'internal' (org seule en interne) ou 'collaborative' (ouvert aux autres orgs)
     TAKE_IN_CHARGE_MODES = (
@@ -502,7 +502,7 @@ class Incident(models.Model):
         ('collaborative', 'Collaborative (ouvert aux autres organisations)'),
     )
     take_in_charge_mode = models.CharField(
-        max_length=20, choices=TAKE_IN_CHARGE_MODES, null=True, blank=True,
+        max_length=20, choices=TAKE_IN_CHARGE_MODES, null=True, blank=True, db_index=True,
         help_text="Mode de prise en charge choisi par la première organisation."
     )
     # --- Spec : suivi résolution incident ---
@@ -512,9 +512,9 @@ class Incident(models.Model):
                                            help_text="Date de fin de la résolution. Obligatoire à la clôture.")
     progress = models.PositiveSmallIntegerField(default=0,
                                                 help_text="Progression auto-calculée (0-100) selon avancement des tâches.")
-    is_public = models.BooleanField(default=True,
+    is_public = models.BooleanField(default=True, db_index=True,
                                      help_text="Si False, l'incident n'est visible que par l'organisation de l'agent.")
-    is_deleted = models.BooleanField(default=False,
+    is_deleted = models.BooleanField(default=False, db_index=True,
                                      help_text="Si True, l'incident a été supprimé (corbeille).")
 
     def __str__(self):
@@ -738,8 +738,8 @@ class Collaboration(models.Model):
     end_date = models.DateField(blank=True, null=True)
     motivation = models.TextField(blank=True, null=True)
     other_option = models.CharField(max_length=255, blank=True, null=True)
-    status = models.CharField(max_length=20, default='pending')
-    role = models.CharField(max_length=20, choices=COLLAB_ROLES, default=COLLAB_ROLE_CONTRIBUTOR,
+    status = models.CharField(max_length=20, default='pending', db_index=True)
+    role = models.CharField(max_length=20, choices=COLLAB_ROLES, default=COLLAB_ROLE_CONTRIBUTOR, db_index=True,
                             help_text="Rôle de l'organisation sur l'incident : leader, contributor ou observer.")
 
     class Meta:
@@ -790,7 +790,7 @@ class Prediction(models.Model):
     )
     status = models.CharField(
         max_length=32, choices=PredictionStatus.choices,
-        default=PredictionStatus.PENDING
+        default=PredictionStatus.PENDING, db_index=True
     )
 
     macro_category = models.CharField(max_length=255, blank=True, default='')
@@ -959,7 +959,7 @@ class IncidentTask(models.Model):
     description = models.TextField(blank=True, null=True)
     start_date = models.DateField()
     end_date = models.DateField()
-    state = models.CharField(max_length=20, choices=TASK_STATES, default=TASK_PENDING)
+    state = models.CharField(max_length=20, choices=TASK_STATES, default=TASK_PENDING, db_index=True)
     proof_image = models.ImageField(upload_to='tasks/proofs/', storage=ImageStorage(),
                                     null=True, blank=True,
                                     help_text="Image de preuve quand la tâche est marquée 'done'.")
@@ -972,7 +972,7 @@ class IncidentTask(models.Model):
                                     on_delete=models.SET_NULL)
     created_by = models.ForeignKey(User, related_name='created_tasks', on_delete=models.CASCADE)
     is_confirmed = models.BooleanField(
-        default=False,
+        default=False, db_index=True,
         help_text="True si la tâche a été confirmée par le leader. "
                   "Seules les tâches confirmées comptent dans la progression."
     )

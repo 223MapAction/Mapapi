@@ -12,7 +12,13 @@ def notify_organisation_on_collaboration(sender, instance, created, **kwargs):
         incident = instance.incident
         user = incident.taken_by
         requesting_user = instance.user  
-        requesting_organisation = requesting_user.organisation  
+        requesting_organisation = getattr(requesting_user, 'organisation', '')
+        if hasattr(requesting_user, 'organisation_member') and requesting_user.organisation_member:
+            requesting_organisation = requesting_user.organisation_member.name
+        
+        target_organisation = getattr(user, 'organisation', '')
+        if hasattr(user, 'organisation_member') and user.organisation_member:
+            target_organisation = user.organisation_member.name
         
         if user and user.email:
             try:
@@ -21,7 +27,7 @@ def notify_organisation_on_collaboration(sender, instance, created, **kwargs):
                     'incident_title': incident.title,  
                     'incident_zone': incident.zone,  
                     'incident_creation_date': incident.created_at,  
-                    'organisation': user.organisation,
+                    'organisation': target_organisation,
                     'requesting_organisation': requesting_organisation 
                 }
                 

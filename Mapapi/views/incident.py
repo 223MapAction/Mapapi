@@ -3,6 +3,7 @@ import subprocess
 from datetime import timedelta
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.mail import EmailMultiAlternatives
 from django.db.models import Q
 from django.template.loader import render_to_string
@@ -28,6 +29,8 @@ from ..permissions import IsIncidentLeader, IsSuperAdminOrOrgOwnIncident, IsSupe
 from ..tasks import analyze_incident_with_model_task
 from ..Send_mails import send_email
 import logging
+
+User = get_user_model()
 
 logger = logging.getLogger(__name__)
 from ..services.model_chat_client import ask_model_chat
@@ -605,21 +608,52 @@ class ToggleIncidentPublicView(APIView):
 
 
 @extend_schema(
-    description="Endpoint allowing retrieval an incident resolved.",
-    request=IncidentSerializer,
-    responses={200: IncidentSerializer, 404: "Incident not found"},  
+    description="Incidents résolus avec détails enrichis : prédiction, organisations impliquées, tâches groupées par organisation. "
+                "Le superadmin voit tout ; les autres voient uniquement les incidents liés à leur organisation.",
+    responses={200: IncidentResolvedSerializer(many=True)},
 )
-class IncidentResolvedAPIListView(generics.CreateAPIView):
-    permission_classes = ()
-    queryset = Incident.objects.all()
-    serializer_class = IncidentSerializer
+class IncidentResolvedAPIListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = IncidentResolvedSerializer
+    pagination_class = CustomPageNumberPagination
 
-    def get(self, request, format=None):
-        items = Incident.objects.filter(etat="resolved").select_related('user_id', 'category_id').order_by('pk')
-        paginator = CustomPageNumberPagination()
-        result_page = paginator.paginate_queryset(items, request)
-        serializer = IncidentGetSerializer(result_page, many=True)
-        return paginator.get_paginated_response(serializer.data)
+    def get_queryset(self):
+        user = self.request.user
+        qs = Incident.objects.filter(etat=RESOLVED)
+
+        # Isolation par organisation. Le super admin voit tout.
+        if not user.is_superuser:
+            org = user.organisation_member
+            # Agents de terrain de TOUTES les organisations
+            all_field_agent_ids = User.objects.filter(org_role=ORG_ROLE_FIELD).values_list('id', flat=True)
+            # Incidents citoyens : déclarés par un user qui n'est agent de terrain d'aucune org
+            citizen_q = ~Q(user_id__in=all_field_agent_ids)
+
+            if org:
+                agent_ids = org.members.filter(org_role=ORG_ROLE_FIELD).values_list('id', flat=True)
+                org_members = org.members.all()
+                # ses agents + citoyens + incidents pris en charge par l'org
+                qs = qs.filter(
+                    Q(user_id__in=agent_ids) | citizen_q | Q(taken_by__in=org_members)
+                )
+                # masque les incidents 'internal' appartenant à d'autres orgs
+                qs = qs.filter(
+                    Q(take_in_charge_mode__isnull=True) |
+                    ~Q(take_in_charge_mode__iexact='internal') |
+                    Q(take_in_charge_mode__iexact='internal', taken_by__in=org_members)
+                )
+            else:
+                # Utilisateur sans organisation : uniquement les incidents citoyens (publics)
+                qs = qs.filter(citizen_q)
+
+        # Optimisation des requêtes pour le serializer enrichi
+        return qs.select_related(
+            'user_id', 'category_id', 'taken_by__organisation_member'
+        ).prefetch_related(
+            'collaboration_set__user__organisation_member',
+            'tasks__created_by__organisation_member',
+            'tasks__assigned_to',
+        ).order_by('-created_at')
 
 @extend_schema(
     description="Endpoint allowing filtering retrieval incidents",
