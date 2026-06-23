@@ -19,7 +19,7 @@ from drf_spectacular.utils import extend_schema
 from ..serializer import *
 from ..models import (
     Collaboration, COLLAB_ROLE_LEADER, COLLAB_ROLE_CONTRIBUTOR, COLLAB_ROLE_OBSERVER,
-    RESOLVED, TASK_DONE, TASK_FAILED,
+    RESOLVED, TAKEN, TASK_DONE, TASK_FAILED,
     ORG_ROLE_FIELD, ORG_ROLE_ADMIN, ORG_ROLE_BUREAU,
     Prediction, PredictionStatus,
     ChatHistory, CHAT_ROLE_USER, CHAT_ROLE_ASSISTANT,
@@ -232,6 +232,53 @@ class MyIncidentsView(generics.ListAPIView):
 
 
 @extend_schema(
+    description="Notifications (dérivées, sans modèle) de l'état des incidents du citoyen connecté. "
+                "Renvoie les incidents passés à 'taken_into_account' ou 'resolved'. "
+                "Le suivi lu/non-lu est géré côté application mobile.",
+    responses={200: dict},
+)
+class MyIncidentNotificationsView(APIView):
+    """GET /my-incidents/notifications/
+
+    Endpoint léger destiné à l'app mobile du citoyen : il liste l'état actuel
+    des incidents qu'il a déclarés et qui ont avancé (pris en compte ou résolu).
+    Aucun modèle de notification n'est utilisé ; la liste est calculée à la volée.
+    """
+    permission_classes = [IsAuthenticated]
+
+    _MESSAGES = {
+        TAKEN: "Votre incident « {title} » a été pris en compte.",
+        RESOLVED: "Votre incident « {title} » a été résolu.",
+    }
+
+    def get(self, request, *args, **kwargs):
+        incidents = (
+            Incident.objects
+            .filter(user_id=request.user, etat__in=[TAKEN, RESOLVED])
+            .only('id', 'title', 'zone', 'etat', 'created_at', 'resolution_end_date')
+            .order_by('-created_at')
+        )
+
+        notifications = []
+        for inc in incidents:
+            title = inc.title or inc.zone or f"#{inc.id}"
+            notifications.append({
+                "incident_id": inc.id,
+                "title": inc.title,
+                "zone": inc.zone,
+                "etat": inc.etat,
+                "message": self._MESSAGES[inc.etat].format(title=title),
+                "resolution_end_date": inc.resolution_end_date,
+                "created_at": inc.created_at,
+            })
+
+        return Response({
+            "count": len(notifications),
+            "results": notifications,
+        }, status=status.HTTP_200_OK)
+
+
+@extend_schema(
     description="Incidents de l'organisation. Filtre ?source=agents|citizens|all (défaut: all).",
     responses={200: IncidentGetSerializer(many=True)},
 )
@@ -254,12 +301,17 @@ class OrgIncidentsView(generics.ListAPIView):
 
         source = self.request.query_params.get('source', 'all')
         mode = self.request.query_params.get('mode', None)
-        # IDs des agents de terrain de l'org
+        # IDs des agents de terrain de CETTE org
         agent_ids = org.members.filter(org_role=ORG_ROLE_FIELD).values_list('id', flat=True)
 
         qs = Incident.objects.select_related('user_id', 'category_id')
 
         org_members = org.members.all()
+
+        # IDs des agents de terrain de TOUTES les organisations
+        all_field_agent_ids = User.objects.filter(org_role=ORG_ROLE_FIELD).values_list('id', flat=True)
+        # Agents de terrain des AUTRES organisations
+        other_field_agent_ids = all_field_agent_ids.exclude(id__in=agent_ids)
 
         if source == 'agents_or_internal':
             # Option B: Logique OU (Incidents créés par les agents de l'org OU pris en interne par l'org)
@@ -280,6 +332,12 @@ class OrgIncidentsView(generics.ListAPIView):
             Q(take_in_charge_mode__isnull=True) |
             ~Q(take_in_charge_mode__iexact='internal') |
             Q(take_in_charge_mode__iexact='internal', taken_by__in=org_members)
+        )
+
+        # Règle de sécurité globale : on masque les incidents déclarés par les agents de terrain
+        # d'AUTRES organisations (sauf si pris en charge par cette org).
+        qs = qs.exclude(
+            Q(user_id__in=other_field_agent_ids) & ~Q(taken_by__in=org_members)
         )
 
         # Si le front-end demande explicitement un filtre mode additionnel (uniquement si ce n'est pas l'Option B)
@@ -569,12 +627,40 @@ class IncidentResolvedAPIListView(generics.CreateAPIView):
     responses={200: IncidentSerializer, 404: "incident not found"},  
 )
 class IncidentFilterView(APIView):
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, *args, **kwargs):
         filter_type = request.query_params.get('filter_type')
         custom_start = request.query_params.get('custom_start')
         custom_end = request.query_params.get('custom_end')
 
         incidents = Incident.objects.all()
+
+        # Isolation par organisation. Le super admin voit tout.
+        user = request.user
+        if not user.is_superuser:
+            org = user.organisation_member
+            # Agents de terrain de TOUTES les organisations
+            all_field_agent_ids = User.objects.filter(org_role=ORG_ROLE_FIELD).values_list('id', flat=True)
+            # Incidents citoyens : déclarés par un user qui n'est agent de terrain d'aucune org
+            citizen_q = ~Q(user_id__in=all_field_agent_ids)
+
+            if org:
+                agent_ids = org.members.filter(org_role=ORG_ROLE_FIELD).values_list('id', flat=True)
+                org_members = org.members.all()
+                # ses agents + citoyens + incidents pris en charge par l'org
+                incidents = incidents.filter(
+                    Q(user_id__in=agent_ids) | citizen_q | Q(taken_by__in=org_members)
+                )
+                # masque les incidents 'internal' appartenant à d'autres orgs
+                incidents = incidents.filter(
+                    Q(take_in_charge_mode__isnull=True) |
+                    ~Q(take_in_charge_mode__iexact='internal') |
+                    Q(take_in_charge_mode__iexact='internal', taken_by__in=org_members)
+                )
+            else:
+                # Utilisateur sans organisation : uniquement les incidents citoyens (publics)
+                incidents = incidents.filter(citizen_q)
 
         if filter_type == 'today':
             incidents = incidents.filter(created_at__date=timezone.now().date())
@@ -592,7 +678,12 @@ class IncidentFilterView(APIView):
         elif filter_type == 'custom_range' and custom_start and custom_end:
             incidents = incidents.filter(created_at__date__range=[custom_start, custom_end])
 
-        serializer = IncidentSerializer(incidents, many=True)
+        # Serializer léger pour la carte : aucun champ relationnel imbriqué -> 1 seule requête
+        incidents = incidents.only(
+            'id', 'title', 'zone', 'lattitude', 'longitude',
+            'etat', 'category_id', 'created_at', 'progress', 'take_in_charge_mode',
+        )
+        serializer = IncidentMapSerializer(incidents, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 @extend_schema(
@@ -1465,3 +1556,20 @@ class AgentChangePinView(APIView):
             {"message": "PIN changé avec succès."},
             status=status.HTTP_200_OK,
         )
+
+
+class GlobalImpactAPIView(APIView):
+    """
+    GET /impact/global/
+    Retourne les statistiques d'impact global basées sur les incidents valides et leurs prédictions.
+    Supporte les filtres : ?period=30d|90d|year & scope=resolved|ongoing & category=text & search=text
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        from ..services.impact_service import ImpactCalculatorService
+
+        service = ImpactCalculatorService(user=request.user, query_params=request.query_params)
+        data = service.compute()
+
+        return Response(data, status=status.HTTP_200_OK)

@@ -134,8 +134,8 @@ COUNTRY_NIGER = 'niger'
 COUNTRY_COTE_DIVOIRE = 'cote_divoire'
 COUNTRY_MAURITANIA = 'mauritania'
 INTERVENTION_COUNTRIES = (
-    (COUNTRY_SENEGAL, 'Sénégal'),
     (COUNTRY_MALI, 'Mali'),
+    (COUNTRY_SENEGAL, 'Sénégal'),
     (COUNTRY_GUINEA, 'Guinée'),
     (COUNTRY_BURKINA_FASO, 'Burkina Faso'),
     (COUNTRY_NIGER, 'Niger'),

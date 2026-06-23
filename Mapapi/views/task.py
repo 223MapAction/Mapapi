@@ -77,8 +77,11 @@ class IncidentTaskDetailView(generics.RetrieveUpdateDestroyAPIView):
     responses={200: IncidentTaskSerializer},
 )
 class IncidentTaskCompleteView(APIView):
-    """POST /incidents/<incident_id>/tasks/<pk>/complete/"""
-    permission_classes = [IsAuthenticated, IsIncidentLeader]
+    """POST /incidents/<incident_id>/tasks/<pk>/complete/
+
+    Le leader OU un contributeur accepté peut marquer une tâche comme terminée.
+    """
+    permission_classes = [IsAuthenticated, IsIncidentLeaderOrContributor]
 
     def post(self, request, incident_id, pk):
         try:
