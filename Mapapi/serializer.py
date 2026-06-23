@@ -182,6 +182,22 @@ class IncidentGetSerializer(ModelSerializer):
         fields = '__all__'
 
 
+class IncidentMapSerializer(ModelSerializer):
+    """Serializer léger pour les marqueurs de la carte.
+
+    Ne charge aucune relation imbriquée (user, catégorie, assignments) afin
+    d'éviter les requêtes N+1. Uniquement les champs nécessaires à l'affichage
+    d'un marqueur et à son ouverture.
+    """
+    class Meta:
+        model = Incident
+        fields = (
+            'id', 'title', 'zone', 'lattitude', 'longitude',
+            'etat', 'category_id', 'created_at', 'progress',
+            'take_in_charge_mode',
+        )
+
+
 class EvenementSerializer(ModelSerializer):
     class Meta:
         model = Evenement
@@ -576,6 +592,15 @@ class DiscussionMessageSerializer(serializers.ModelSerializer):
 
 
 class IncidentTaskSerializer(serializers.ModelSerializer):
+    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
+    created_by_organisation = serializers.CharField(
+        source='created_by.organisation_member.name', read_only=True, default=None
+    )
+    created_by_organisation_id = serializers.IntegerField(
+        source='created_by.organisation_member.id', read_only=True, default=None
+    )
+    assigned_to_name = serializers.CharField(source='assigned_to.get_full_name', read_only=True, default=None)
+
     class Meta:
         model = IncidentTask
         fields = '__all__'

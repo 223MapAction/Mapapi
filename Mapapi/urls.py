@@ -11,6 +11,7 @@ from .views.partner_suggestion import (
 )
 from .views.incident import (
     TakeInChargeView, CloseIncidentView, MyIncidentsView,
+    MyIncidentNotificationsView,
     OrgIncidentsView, AgentCodeLoginView, ToggleIncidentPublicView,
     TrashIncidentsView, RestoreIncidentView,
     IncidentAssignmentListCreateView, IncidentAssignmentDetailView,
@@ -19,6 +20,7 @@ from .views.incident import (
     BulkForceDeleteIncidentsView,
     IncidentPredictionView, RetryIncidentPredictionView,
     IncidentChatView, AgentPinLoginView, AgentChangePinView,
+    GlobalImpactAPIView,
 )
 from .views.collaboration import (
     BulkCollaborationRequestView,
@@ -49,6 +51,7 @@ from .views import PasswordResetView
 
 urlpatterns = [
     path('tenant-config/', TenantConfigView.as_view(), name='tenant_config'),
+    path('impact/global/', GlobalImpactAPIView.as_view(), name='global-impact'),
     path('organisations/', OrganisationViewSet.as_view(), name='organisation-list-create'),
     path('organisations/<int:pk>/', OrganisationViewSet.as_view(), name='organisation-detail'),
     path('organisations/<int:pk>/detail/', OrganisationDetailView.as_view(), name='organisation-detail-enriched'),
@@ -88,6 +91,7 @@ urlpatterns = [
     path('IncidentOnWeek_zone/<zone>', IncidentByWeekByZoneAPIView.as_view(), name='IncidentOnWeek_zone'),
     path('incident-filter/', IncidentFilterView.as_view(), name='incident_filter'),
     path('my-incidents/', MyIncidentsView.as_view(), name='my-incidents'),
+    path('my-incidents/notifications/', MyIncidentNotificationsView.as_view(), name='my-incident-notifications'),
     path('org-incidents/', OrgIncidentsView.as_view(), name='org-incidents'),
     path('incidents/<int:incident_id>/prediction/', IncidentPredictionView.as_view(), name='incident-prediction'),
     path('incidents/<int:incident_id>/prediction/retry/', RetryIncidentPredictionView.as_view(), name='incident-prediction-retry'),
