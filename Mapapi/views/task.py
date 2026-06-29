@@ -20,12 +20,9 @@ class IncidentTaskListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated, IsIncidentLeaderOrContributor]
 
     def get_queryset(self):
-        incident_id = self.kwargs['incident_id']
-        qs = IncidentTask.objects.filter(incident_id=incident_id).order_by('start_date', 'id')
-        print(f"DEBUG: incident_id={incident_id}, tasks count={qs.count()}")
-        if qs.count() > 0:
-            print(f"DEBUG: task IDs = {list(qs.values_list('id', flat=True))}")
-        return qs
+        return IncidentTask.objects.filter(
+            incident_id=self.kwargs['incident_id']
+        ).order_by('start_date', 'id')
 
     def perform_create(self, serializer):
         incident = Incident.objects.get(pk=self.kwargs['incident_id'])

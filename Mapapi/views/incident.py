@@ -297,6 +297,9 @@ class OrgIncidentsView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
+        if user.is_superuser:
+            return Incident.objects.all().select_related('user_id', 'category_id').order_by('-created_at')
+
         org = user.organisation_member
 
         if not org:
@@ -481,6 +484,8 @@ class AgentAssignedIncidentsView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
+        if user.is_superuser:
+            return IncidentAssignment.objects.all().select_related('incident', 'agent', 'assigned_by')
         if user.org_role != ORG_ROLE_FIELD:
             return IncidentAssignment.objects.none()
         return IncidentAssignment.objects.filter(agent=user).select_related('incident', 'agent', 'assigned_by')
@@ -492,14 +497,54 @@ class FieldReportListCreateView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        qs = FieldReport.objects.select_related('incident', 'agent').order_by('-visited_at')
-        if user.is_staff or user.is_superuser:
-            return qs
-        if user.org_role == ORG_ROLE_FIELD:
-            return qs.filter(agent=user)
-        if user.organisation_member:
-            return qs.filter(agent__organisation_member=user.organisation_member)
-        return FieldReport.objects.none()
+        qs = FieldReport.objects.select_related(
+            'incident', 'agent', 'agent__organisation_member'
+        ).order_by('-visited_at')
+
+        # Super admin / staff : accès total
+        if user.is_superuser or user.is_staff:
+            pass
+        elif user.org_role == ORG_ROLE_FIELD:
+            # Agent de terrain : ses propres rapports uniquement
+            qs = qs.filter(agent=user)
+        elif user.organisation_member and user.org_role in [ORG_ROLE_ADMIN, ORG_ROLE_BUREAU]:
+            # Agent de bureau / admin d'organisation
+            incident_id = self.request.query_params.get('incident') or self.request.query_params.get('incident_id')
+            if incident_id:
+                try:
+                    incident = Incident.objects.get(pk=incident_id)
+                    # L'org a-t-elle un lien avec l'incident ?
+                    is_owner = incident.user_id and incident.user_id.organisation_member == user.organisation_member
+                    is_taker = incident.taken_by and incident.taken_by.organisation_member == user.organisation_member
+                    has_collab = Collaboration.objects.filter(
+                        incident=incident,
+                        user__organisation_member=user.organisation_member,
+                        status='accepted'
+                    ).exists()
+                    
+                    if is_owner or is_taker or has_collab:
+                        qs = qs.filter(incident=incident)
+                    else:
+                        return FieldReport.objects.none()
+                except (Incident.DoesNotExist, ValueError):
+                    return FieldReport.objects.none()
+            else:
+                # Liste générale : rapports des agents de son org ou sur des incidents liés à son org
+                qs = qs.filter(
+                    Q(agent__organisation_member=user.organisation_member) |
+                    Q(incident__user_id__organisation_member=user.organisation_member) |
+                    Q(incident__taken_by__organisation_member=user.organisation_member) |
+                    Q(incident__collaboration__user__organisation_member=user.organisation_member, incident__collaboration__status='accepted')
+                ).distinct()
+        else:
+            return FieldReport.objects.none()
+
+        # Filtre optionnel par incident (appliqué à tous les rôles restants qui ont pu passer)
+        incident_id = self.request.query_params.get('incident') or self.request.query_params.get('incident_id')
+        if incident_id and (user.is_superuser or user.is_staff or user.org_role == ORG_ROLE_FIELD):
+            qs = qs.filter(incident_id=incident_id)
+
+        return qs
 
     def create(self, request, *args, **kwargs):
         incident_id = request.data.get('incident') or request.data.get('incident_id')
@@ -591,7 +636,7 @@ class ToggleIncidentPublicView(APIView):
                     {"error": "Seul un admin ou agent de bureau peut modifier la visibilité."},
                     status=status.HTTP_403_FORBIDDEN,
                 )
-        elif not user.is_staff:
+        elif not (user.is_staff or user.is_superuser):
             return Response(
                 {"error": "Vous n'avez pas les droits sur cet incident."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -1016,11 +1061,15 @@ class TakeInChargeView(APIView):
             incident.take_in_charge_mode = 'internal'
             incident.save(update_fields=['taken_by', 'etat', 'take_in_charge_mode'])
 
-            collaboration, _ = Collaboration.objects.get_or_create(
+            collaboration, created = Collaboration.objects.get_or_create(
                 incident=incident,
                 user=request.user,
                 defaults={'role': COLLAB_ROLE_LEADER, 'status': 'accepted'},
             )
+            if not created:
+                collaboration.role = COLLAB_ROLE_LEADER
+                collaboration.status = 'accepted'
+                collaboration.save(update_fields=['role', 'status'])
 
             action_message = f"took incident {incident_id} into account in internal mode"
             UserAction.objects.create(user=request.user, action=action_message)
