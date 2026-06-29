@@ -360,6 +360,28 @@ class PredictionSerializer(serializers.ModelSerializer):
             'error_message', 'created_at', 'updated_at',
         )
 
+class OtherCollaboratorSerializer(serializers.ModelSerializer):
+    organisation_name = serializers.CharField(
+        source='user.organisation_member.name', read_only=True, default=None
+    )
+    organisation_id = serializers.IntegerField(
+        source='user.organisation_member_id', read_only=True, default=None
+    )
+    user_full_name = serializers.SerializerMethodField()
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+
+    class Meta:
+        model = Collaboration
+        fields = (
+            'id', 'user', 'user_full_name', 'user_email',
+            'organisation_id', 'organisation_name', 'role', 'status', 'end_date'
+        )
+
+    def get_user_full_name(self, obj):
+        if obj.user:
+            return f"{obj.user.first_name or ''} {obj.user.last_name or ''}".strip() or obj.user.email
+        return None
+
 class CollaborationSerializer(ModelSerializer):
     # Nom de l'organisation du collaborateur (lecture seule)
     organisation_name = serializers.CharField(
@@ -373,6 +395,7 @@ class CollaborationSerializer(ModelSerializer):
     incident_title = serializers.CharField(source='incident.title', read_only=True)
     incident_details = IncidentSerializer(source='incident', read_only=True)
     prediction_details = PredictionSerializer(source='incident.prediction', read_only=True)
+    other_collaborators = serializers.SerializerMethodField()
 
     class Meta:
         model = Collaboration
@@ -387,6 +410,10 @@ class CollaborationSerializer(ModelSerializer):
         if obj.user:
             return f"{obj.user.first_name or ''} {obj.user.last_name or ''}".strip() or obj.user.email
         return None
+
+    def get_other_collaborators(self, obj):
+        qs = Collaboration.objects.filter(incident=obj.incident).exclude(id=obj.id).select_related('user', 'user__organisation_member')
+        return OtherCollaboratorSerializer(qs, many=True).data
 
     def validate_role(self, value):
         """Un utilisateur ne peut pas se déclarer leader lui-même.

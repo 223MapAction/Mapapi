@@ -37,9 +37,13 @@ class CollaborationDashboardView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        qs = Collaboration.objects.filter(
-            Q(user=user) | Q(incident__taken_by=user)
-        ).select_related(
+        if user.is_superuser:
+            qs = Collaboration.objects.all()
+        else:
+            qs = Collaboration.objects.filter(
+                Q(user=user) | Q(incident__taken_by=user)
+            )
+        qs = qs.select_related(
             'incident', 'user', 'user__organisation_member'
         ).order_by('-created_at')
 
@@ -95,9 +99,13 @@ class CollaborationView(generics.CreateAPIView, generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        qs = Collaboration.objects.filter(
-            Q(user=user) | Q(incident__taken_by=user)
-        ).select_related(
+        if user.is_superuser:
+            qs = Collaboration.objects.all()
+        else:
+            qs = Collaboration.objects.filter(
+                Q(user=user) | Q(incident__taken_by=user)
+            )
+        qs = qs.select_related(
             'incident', 'user', 'user__organisation_member'
         ).order_by('-id')
 
@@ -236,8 +244,9 @@ class HandleCollaborationRequestView(APIView):
         if action not in ["accept", "reject"]:
             return Response({"error": "Invalid action"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Seul le leader de l'incident peut accepter/rejeter
+        # Seul le leader de l'incident (ou un super admin) peut accepter/rejeter
         is_leader = (
+            request.user.is_superuser or
             collaboration.incident.taken_by == request.user or
             Collaboration.objects.filter(
                 incident=collaboration.incident,
@@ -261,6 +270,16 @@ class HandleCollaborationRequestView(APIView):
             if incident.take_in_charge_mode == 'internal':
                 incident.take_in_charge_mode = 'collaborative'
                 incident.save(update_fields=['take_in_charge_mode'])
+                if incident.taken_by:
+                    collab_leader, created = Collaboration.objects.get_or_create(
+                        incident=incident,
+                        user=incident.taken_by,
+                        defaults={'role': COLLAB_ROLE_LEADER, 'status': 'accepted'}
+                    )
+                    if not created:
+                        collab_leader.role = COLLAB_ROLE_LEADER
+                        collab_leader.status = 'accepted'
+                        collab_leader.save(update_fields=['role', 'status'])
             return Response({"status": "Collaboration accepted"}, status=status.HTTP_200_OK)
         elif action == "reject":
             collaboration.status = 'declined'
@@ -276,8 +295,9 @@ class DeclineCollaborationView(APIView):
             collaboration_id = request.data.get('collaboration_id')
             collaboration = Collaboration.objects.get(id=collaboration_id)
 
-            # Seul le leader de l'incident peut décliner
+            # Seul le leader de l'incident (ou un super admin) peut décliner
             is_leader = (
+                request.user.is_superuser or
                 collaboration.incident.taken_by == request.user or
                 Collaboration.objects.filter(
                     incident=collaboration.incident,
@@ -337,8 +357,9 @@ class AcceptCollaborationView(APIView):
 
             collaboration = Collaboration.objects.get(id=collaboration_id)
             
-            # Seul le leader de l'incident peut accepter
+            # Seul le leader de l'incident (ou un super admin) peut accepter
             is_leader = (
+                request.user.is_superuser or
                 collaboration.incident.taken_by == request.user or
                 Collaboration.objects.filter(
                     incident=collaboration.incident,
@@ -375,6 +396,16 @@ class AcceptCollaborationView(APIView):
             if incident.take_in_charge_mode == 'internal':
                 incident.take_in_charge_mode = 'collaborative'
                 incident.save(update_fields=['take_in_charge_mode'])
+                if incident.taken_by:
+                    collab_leader, created = Collaboration.objects.get_or_create(
+                        incident=incident,
+                        user=incident.taken_by,
+                        defaults={'role': COLLAB_ROLE_LEADER, 'status': 'accepted'}
+                    )
+                    if not created:
+                        collab_leader.role = COLLAB_ROLE_LEADER
+                        collab_leader.status = 'accepted'
+                        collab_leader.save(update_fields=['role', 'status'])
 
             return Response(
                 {"message": "Collaboration acceptée avec succès"},

@@ -118,7 +118,7 @@ class OrganisationMemberListView(generics.ListAPIView):
         # Vérifier que l'utilisateur est admin ou agent de bureau de cette org
         org_id = self.kwargs['pk']
         user = request.user
-        if not (user.is_staff or (
+        if not (user.is_staff or user.is_superuser or (
             user.organisation_member_id == org_id
             and user.org_role in [ORG_ROLE_ADMIN, ORG_ROLE_BUREAU]
         )):
@@ -141,7 +141,7 @@ class OrganisationMemberCreateView(APIView):
     def post(self, request, pk):
         user = request.user
         # Seul un admin org ou agent de bureau de cette org peut ajouter
-        if not (user.is_staff or (
+        if not (user.is_staff or user.is_superuser or (
             user.organisation_member_id == pk
             and user.org_role in [ORG_ROLE_ADMIN, ORG_ROLE_BUREAU]
         )):
@@ -259,7 +259,7 @@ class FieldAgentCreateView(APIView):
         user = request.user
 
         # Permissions : org_admin/bureau_agent de cette org ou superadmin
-        if not (user.is_staff or (
+        if not (user.is_staff or user.is_superuser or (
             user.organisation_member_id == pk
             and user.org_role in [ORG_ROLE_ADMIN, ORG_ROLE_BUREAU]
         )):
@@ -388,7 +388,7 @@ class OrganisationMemberDetailView(APIView):
 
     def _check_permission(self, request, pk):
         user = request.user
-        if user.is_staff:
+        if user.is_staff or user.is_superuser:
             return True
         return (
             user.organisation_member_id == pk
@@ -505,7 +505,7 @@ class StaffAccountCreateView(APIView):
         user = request.user
 
         # Permissions : admin de l'org ou superadmin (un bureau_agent ne crée pas d'admin)
-        if not (user.is_staff or (
+        if not (user.is_staff or user.is_superuser or (
             user.organisation_member_id == pk
             and user.org_role == ORG_ROLE_ADMIN
         )):

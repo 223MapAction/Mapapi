@@ -18,6 +18,11 @@ from .models import (
 )
 
 
+def _is_super(request):
+    """True si l'utilisateur est un super admin authentifié (accès total, sans exception)."""
+    return bool(request.user and request.user.is_authenticated and request.user.is_superuser)
+
+
 def _get_incident_from_view(view, request):
     """Récupère l'incident ciblé par la vue.
 
@@ -46,6 +51,8 @@ class IsIncidentLeader(BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
+        if _is_super(request):
+            return True
         incident = _get_incident_from_view(view, request)
         if incident is None:
             # si pas d'incident dans l'URL, on délègue à has_object_permission
@@ -60,6 +67,8 @@ class IsIncidentLeader(BasePermission):
         return incident.taken_by_id == request.user.id
 
     def has_object_permission(self, request, view, obj):
+        if _is_super(request):
+            return True
         incident = getattr(obj, 'incident', obj if isinstance(obj, Incident) else None)
         if incident is None:
             return False
@@ -81,6 +90,8 @@ class IsIncidentCollaborator(BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
+        if _is_super(request):
+            return True
         incident = _get_incident_from_view(view, request)
         if incident is None:
             return True
@@ -91,6 +102,8 @@ class IsIncidentCollaborator(BasePermission):
         ).exists()
 
     def has_object_permission(self, request, view, obj):
+        if _is_super(request):
+            return True
         incident = getattr(obj, 'incident', obj if isinstance(obj, Incident) else None)
         if incident is None:
             return False
@@ -113,6 +126,8 @@ class IsIncidentContributor(BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
+        if _is_super(request):
+            return True
         # Les méthodes de lecture restent autorisées pour tous les collaborateurs
         if request.method in SAFE_METHODS:
             return IsIncidentCollaborator().has_permission(request, view)
@@ -139,6 +154,8 @@ class IsIncidentLeaderOrContributor(BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
+        if _is_super(request):
+            return True
         if request.method in SAFE_METHODS:
             return IsIncidentCollaborator().has_permission(request, view)
         incident = _get_incident_from_view(view, request)
