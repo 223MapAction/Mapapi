@@ -2,6 +2,7 @@
 import os
 import time
 import requests
+from twilio.rest import Client
 from datetime import timedelta
 
 import pyotp
@@ -498,67 +499,27 @@ class PhoneOTPView(generics.CreateAPIView):
             return Response({'message': 'Erreur lors de l\'envoi du SMS'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 def send_sms(phone_number, message_text):
-    """Envoi SMS via Orange Mali SMS API."""
+    """Envoi SMS via Twilio API."""
     try:
-        # Get access token
-        token_url = "https://api.orange.com/oauth/v3/token"
-        token_data = {
-            "grant_type": "client_credentials",
-            "client_id": settings.ORANGE_CLIENT_ID,
-            "client_secret": settings.ORANGE_CLIENT_SECRET
-        }
-        token_response = requests.post(token_url, data=token_data)
-        token_response.raise_for_status()
-        access_token = token_response.json()['access_token']
+        client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
 
-        # Send SMS
-        sender_address = settings.ORANGE_SENDER_ADDRESS
-
-        # Add tel: prefix if not present
-        if not sender_address.startswith('tel:'):
-            sender_address = f"tel:{sender_address}"
-
-        # Add +223 country code if not present
-        if sender_address.startswith('tel:') and not sender_address.startswith('tel:+223'):
-            # Remove tel: prefix, add +223, then re-add tel:
-            number = sender_address.replace('tel:', '')
-            sender_address = f"tel:+223{number.lstrip('0')}"
-
-        # Validate sender address format (should be tel:+223XXXXXXXXX)
-        if not sender_address.startswith('tel:+223') or len(sender_address) < 12:
-            print(f"Erreur: ORANGE_SENDER_ADDRESS invalide: {sender_address}. Format attendu: tel:+223XXXXXXXXX")
-            return False
-
+        # Format recipient en E.164 (+223XXXXXXXX)
         recipient = phone_number if phone_number.startswith('+') else f"+223{phone_number.lstrip('0')}"
-        if not recipient.startswith('tel:'):
-            recipient = f"tel:{recipient}"
 
-        sms_url = f"https://api.orange.com/smsmessaging/v1/outbound/{sender_address}/requests"
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Content-Type": "application/json"
-        }
-        sms_data = {
-            "outboundSMSMessageRequest": {
-                "address": recipient,
-                "senderAddress": sender_address,
-                "outboundSMSTextMessage": {
-                    "message": message_text
-                }
-            }
-        }
+        message = client.messages.create(
+            body=message_text,
+            from_=settings.TWILIO_PHONE_NUMBER,
+            to=recipient
+        )
 
-        print(f"Envoi SMS vers {sms_url}")
-        print(f"Données: {sms_data}")
-
-        sms_response = requests.post(sms_url, json=sms_data, headers=headers)
-        print(f"Réponse Orange: {sms_response.status_code} - {sms_response.text}")
-
-        sms_response.raise_for_status()
-
-        return True
+        if message.sid:
+            print(f"SMS envoyé avec succès via Twilio. SID: {message.sid}")
+            return True
+        else:
+            print("Erreur: pas de SID retourné par Twilio")
+            return False
     except Exception as e:
-        print(f"Erreur lors de l'envoi SMS Orange: {str(e)}")
+        print(f"Erreur lors de l'envoi SMS Twilio: {str(e)}")
         return False
     
 
