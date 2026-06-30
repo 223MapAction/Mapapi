@@ -346,11 +346,6 @@ TWILIO_AUTH_TOKEN = os.environ.get('TWILIO_AUTH_TOKEN')
 TWILIO_PHONE_NUMBER = os.environ.get('TWILIO_PHONE_NUMBER')
 
 
-# Orange SMS API configuration
-ORANGE_CLIENT_ID = os.environ.get('ORANGE_CLIENT_ID')
-ORANGE_CLIENT_SECRET = os.environ.get('ORANGE_CLIENT_SECRET')
-ORANGE_SENDER_ADDRESS = os.environ.get('ORANGE_SENDER_ADDRESS')
-
 # Model-deploy service (remote AI analysis pipeline)
 MODEL_DEPLOY_ANALYZE_URL = os.environ.get(
     'MODEL_DEPLOY_ANALYZE_URL',
