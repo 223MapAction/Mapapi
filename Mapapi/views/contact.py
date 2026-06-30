@@ -7,16 +7,48 @@ from django.utils.html import strip_tags
 from rest_framework import status, generics
 from rest_framework.response import Response
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, OpenApiResponse
+from drf_spectacular.types import OpenApiTypes
 
 from ..serializer import *
 from .common import CustomPageNumberPagination
 
 
-@extend_schema(
-    description="Endpoint allowing retrieval, updating, and deletion of a contact.",
-    request=ContactSerializer,
-    responses={200: ContactSerializer, 404: "Not Found"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Contacts & Élus'],
+        operation_id='contacts_retrieve',
+        summary="Récupérer un contact",
+        description="Renvoie un message de contact par son identifiant. Endpoint public (aucune authentification requise).",
+        request=None,
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant du contact.")],
+        responses={200: ContactSerializer, 404: OpenApiResponse(description="Contact introuvable (corps vide).")},
+    ),
+    put=extend_schema(
+        tags=['Contacts & Élus'],
+        operation_id='contacts_update',
+        summary="Mettre à jour un contact",
+        description="Remplace l'intégralité d'un message de contact existant. Endpoint public.",
+        request=ContactSerializer,
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant du contact.")],
+        responses={
+            200: ContactSerializer,
+            400: OpenApiResponse(description="Erreurs de validation du sérialiseur."),
+            404: OpenApiResponse(description="Contact introuvable (corps vide)."),
+        },
+    ),
+    delete=extend_schema(
+        tags=['Contacts & Élus'],
+        operation_id='contacts_destroy',
+        summary="Supprimer un contact",
+        description="Supprime définitivement un message de contact. Endpoint public.",
+        request=None,
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant du contact.")],
+        responses={
+            204: OpenApiResponse(description="Contact supprimé."),
+            404: OpenApiResponse(description="Contact introuvable (corps vide)."),
+        },
+    ),
 )
 class ContactAPIView(generics.CreateAPIView):
     permission_classes = ()
@@ -50,10 +82,26 @@ class ContactAPIView(generics.CreateAPIView):
         item.delete()
         return Response(status=204)
 
-@extend_schema(
-    description="Endpoint allowing retrieval and creating of a contact.",
-    request=ContactSerializer,
-    responses={201: ContactSerializer, 400: "Serializer error"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Contacts & Élus'],
+        operation_id='contacts_list',
+        summary="Lister les contacts",
+        description="Renvoie la liste paginée des messages de contact. Endpoint public.",
+        request=None,
+        responses={200: ContactSerializer(many=True)},
+    ),
+    post=extend_schema(
+        tags=['Contacts & Élus'],
+        operation_id='contacts_create',
+        summary="Créer un contact",
+        description="Crée un message de contact puis envoie un e-mail de notification aux administrateurs. Endpoint public.",
+        request=ContactSerializer,
+        responses={
+            201: ContactSerializer,
+            400: OpenApiResponse(description="Erreurs de validation du sérialiseur."),
+        },
+    ),
 )
 class ContactAPIListView(generics.CreateAPIView):
     permission_classes = ()

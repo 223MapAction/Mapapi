@@ -8,6 +8,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import IVRCall, IVRInteraction, Incident, Category, Zone, User
 from django.conf import settings
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from rest_framework import serializers
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,7 +18,28 @@ logger = logging.getLogger(__name__)
 
 @method_decorator(csrf_exempt, name='dispatch')
 class TwilioIVRWebhook(View):
-    
+
+    @extend_schema(
+        tags=['IVR (Téléphonie)'],
+        operation_id='ivr_webhook',
+        summary="Webhook d'entrée d'appel IVR",
+        description=(
+            "Webhook Twilio (public, csrf_exempt) appelé au début d'un appel entrant. "
+            "Crée ou met à jour l'IVRCall associé au CallSid et joue le menu principal "
+            "(1 pour signaler un incident, 2 pour un opérateur). "
+            "Reçoit des paramètres form-encoded de Twilio (`CallSid`, `From`, `CallStatus`) "
+            "et renvoie du TwiML (XML)."
+        ),
+        request=inline_serializer(
+            name='IVRWebhookRequest',
+            fields={
+                'CallSid': serializers.CharField(),
+                'From': serializers.CharField(),
+                'CallStatus': serializers.CharField(required=False),
+            },
+        ),
+        responses={200: OpenApiResponse(description='TwiML (XML)')},
+    )
     def post(self, request):
         call_sid = request.POST.get('CallSid')
         from_number = request.POST.get('From')
@@ -62,11 +86,30 @@ class TwilioIVRWebhook(View):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class SelectZoneView(View):
-    
+
+    @extend_schema(
+        tags=['IVR (Téléphonie)'],
+        operation_id='ivr_select_zone',
+        summary='Choix du menu principal IVR',
+        description=(
+            "Webhook Twilio (public, csrf_exempt) traitant le choix du menu principal. "
+            "Touche 1 : liste les zones et invite à en sélectionner une ; touche 2 : transfert "
+            "vers un opérateur ; sinon raccroche. Enregistre une IVRInteraction (`main_menu`). "
+            "Reçoit des paramètres form-encoded (`CallSid`, `Digits`) et renvoie du TwiML (XML)."
+        ),
+        request=inline_serializer(
+            name='IVRSelectZoneRequest',
+            fields={
+                'CallSid': serializers.CharField(),
+                'Digits': serializers.CharField(),
+            },
+        ),
+        responses={200: OpenApiResponse(description='TwiML (XML)')},
+    )
     def post(self, request):
         call_sid = request.POST.get('CallSid')
         digits = request.POST.get('Digits')
-        
+
         try:
             ivr_call = IVRCall.objects.get(call_sid=call_sid)
             IVRInteraction.objects.create(
@@ -123,14 +166,33 @@ class SelectZoneView(View):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class SelectCategoryView(View):
-    
+
+    @extend_schema(
+        tags=['IVR (Téléphonie)'],
+        operation_id='ivr_select_category',
+        summary="Choix de la zone, invite la catégorie",
+        description=(
+            "Webhook Twilio (public, csrf_exempt) enregistrant la zone choisie (`Digits` indexe "
+            "la liste des zones) sur l'IVRCall, journalise une IVRInteraction (`zone_selection`), "
+            "puis lit la liste des catégories à sélectionner. "
+            "Reçoit des paramètres form-encoded (`CallSid`, `Digits`) et renvoie du TwiML (XML)."
+        ),
+        request=inline_serializer(
+            name='IVRSelectCategoryRequest',
+            fields={
+                'CallSid': serializers.CharField(),
+                'Digits': serializers.CharField(),
+            },
+        ),
+        responses={200: OpenApiResponse(description='TwiML (XML)')},
+    )
     def post(self, request):
         call_sid = request.POST.get('CallSid')
         digits = request.POST.get('Digits')
-        
+
         try:
             ivr_call = IVRCall.objects.get(call_sid=call_sid)
-            
+
             zones = Zone.objects.all()[:9]
             zone_index = int(digits) - 1
             
@@ -178,14 +240,34 @@ class SelectCategoryView(View):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class RecordDescriptionView(View):
-    
+
+    @extend_schema(
+        tags=['IVR (Téléphonie)'],
+        operation_id='ivr_record_description',
+        summary="Choix de la catégorie, lance l'enregistrement",
+        description=(
+            "Webhook Twilio (public, csrf_exempt) enregistrant la catégorie choisie (`Digits` "
+            "indexe la liste des catégories) sur l'IVRCall, journalise une IVRInteraction "
+            "(`category_selection`), puis invite l'appelant à décrire l'incident et démarre "
+            "l'enregistrement audio (jusqu'à 120 s, fin sur `#`). "
+            "Reçoit des paramètres form-encoded (`CallSid`, `Digits`) et renvoie du TwiML (XML)."
+        ),
+        request=inline_serializer(
+            name='IVRRecordDescriptionRequest',
+            fields={
+                'CallSid': serializers.CharField(),
+                'Digits': serializers.CharField(),
+            },
+        ),
+        responses={200: OpenApiResponse(description='TwiML (XML)')},
+    )
     def post(self, request):
         call_sid = request.POST.get('CallSid')
         digits = request.POST.get('Digits')
-        
+
         try:
             ivr_call = IVRCall.objects.get(call_sid=call_sid)
-            
+
             categories = Category.objects.all()[:9]
             category_index = int(digits) - 1
             
@@ -226,7 +308,29 @@ class RecordDescriptionView(View):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class ProcessRecordingView(View):
-    
+
+    @extend_schema(
+        tags=['IVR (Téléphonie)'],
+        operation_id='ivr_process_recording',
+        summary="Traitement de l'enregistrement et création d'incident",
+        description=(
+            "Webhook Twilio (public, csrf_exempt) appelé à la fin de l'enregistrement. "
+            "Stocke l'URL/durée audio sur l'IVRCall (statut `completed`), journalise une "
+            "IVRInteraction (`description_recording`), crée (ou récupère) un User citoyen à partir "
+            "du numéro et crée un Incident (état `declared`) lié à la zone, la catégorie et l'audio. "
+            "Reçoit des paramètres form-encoded (`CallSid`, `RecordingUrl`, `RecordingDuration`) "
+            "et renvoie du TwiML (XML)."
+        ),
+        request=inline_serializer(
+            name='IVRProcessRecordingRequest',
+            fields={
+                'CallSid': serializers.CharField(),
+                'RecordingUrl': serializers.URLField(),
+                'RecordingDuration': serializers.IntegerField(required=False),
+            },
+        ),
+        responses={200: OpenApiResponse(description='TwiML (XML)')},
+    )
     def post(self, request):
         call_sid = request.POST.get('CallSid')
         recording_url = request.POST.get('RecordingUrl')
@@ -288,7 +392,26 @@ class ProcessRecordingView(View):
 
 @method_decorator(csrf_exempt, name='dispatch')
 class RecordingStatusView(View):
-    
+
+    @extend_schema(
+        tags=['IVR (Téléphonie)'],
+        operation_id='ivr_recording_status',
+        summary="Callback de statut d'enregistrement",
+        description=(
+            "Webhook Twilio (public, csrf_exempt) de suivi du statut d'enregistrement. "
+            "Journalise simplement le statut/URL pour le CallSid et renvoie une réponse vide. "
+            "Reçoit des paramètres form-encoded (`CallSid`, `RecordingUrl`, `RecordingStatus`)."
+        ),
+        request=inline_serializer(
+            name='IVRRecordingStatusRequest',
+            fields={
+                'CallSid': serializers.CharField(),
+                'RecordingUrl': serializers.URLField(required=False),
+                'RecordingStatus': serializers.CharField(required=False),
+            },
+        ),
+        responses={200: OpenApiResponse(description='Réponse vide (HTTP 200).')},
+    )
     def post(self, request):
         call_sid = request.POST.get('CallSid')
         recording_url = request.POST.get('RecordingUrl')
@@ -305,7 +428,36 @@ class RecordingStatusView(View):
 
 
 class IVRCallListView(APIView):
-    
+
+    @extend_schema(
+        tags=['IVR (Téléphonie)'],
+        operation_id='ivr_calls_list',
+        summary='Liste des appels IVR',
+        description=(
+            "Retourne tous les appels IVR (JSON), triés du plus récent au plus ancien. "
+            "Endpoint de lecture destiné au dashboard ; aucune permission n'est déclarée (public)."
+        ),
+        request=None,
+        responses={
+            200: inline_serializer(
+                name='IVRCallListItem',
+                many=True,
+                fields={
+                    'id': serializers.UUIDField(),
+                    'call_sid': serializers.CharField(),
+                    'phone_number': serializers.CharField(),
+                    'status': serializers.CharField(),
+                    'zone_selected': serializers.CharField(allow_null=True),
+                    'category_selected': serializers.CharField(allow_null=True),
+                    'description_audio_url': serializers.URLField(allow_null=True),
+                    'description_audio_duration': serializers.IntegerField(allow_null=True),
+                    'incident_id': serializers.UUIDField(allow_null=True),
+                    'created_at': serializers.DateTimeField(),
+                    'updated_at': serializers.DateTimeField(),
+                },
+            )
+        },
+    )
     def get(self, request):
         ivr_calls = IVRCall.objects.all().order_by('-created_at')
         
@@ -329,7 +481,51 @@ class IVRCallListView(APIView):
 
 
 class IVRCallDetailView(APIView):
-    
+
+    @extend_schema(
+        tags=['IVR (Téléphonie)'],
+        operation_id='ivr_call_detail',
+        summary="Détail d'un appel IVR",
+        description=(
+            "Retourne le détail d'un appel IVR (JSON) avec la liste de ses interactions. "
+            "Endpoint de lecture destiné au dashboard ; aucune permission n'est déclarée (public). "
+            "Renvoie 404 si l'appel est introuvable."
+        ),
+        parameters=[
+            OpenApiParameter('call_id', OpenApiTypes.UUID, OpenApiParameter.PATH),
+        ],
+        request=None,
+        responses={
+            200: inline_serializer(
+                name='IVRCallDetail',
+                fields={
+                    'id': serializers.UUIDField(),
+                    'call_sid': serializers.CharField(),
+                    'phone_number': serializers.CharField(),
+                    'status': serializers.CharField(),
+                    'zone_selected': serializers.CharField(allow_null=True),
+                    'category_selected': serializers.CharField(allow_null=True),
+                    'description_audio_url': serializers.URLField(allow_null=True),
+                    'description_audio_duration': serializers.IntegerField(allow_null=True),
+                    'incident_id': serializers.UUIDField(allow_null=True),
+                    'created_at': serializers.DateTimeField(),
+                    'updated_at': serializers.DateTimeField(),
+                    'interactions': inline_serializer(
+                        name='IVRInteractionItem',
+                        many=True,
+                        fields={
+                            'step': serializers.CharField(),
+                            'user_input': serializers.CharField(allow_null=True),
+                            'recording_url': serializers.URLField(allow_null=True),
+                            'recording_duration': serializers.IntegerField(allow_null=True),
+                            'timestamp': serializers.DateTimeField(),
+                        },
+                    ),
+                },
+            ),
+            404: OpenApiResponse(description="IVR Call introuvable ({'error': ...})."),
+        },
+    )
     def get(self, request, call_id):
         try:
             ivr_call = IVRCall.objects.get(id=call_id)

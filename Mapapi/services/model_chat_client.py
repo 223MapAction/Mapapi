@@ -16,7 +16,7 @@ def ask_model_chat(messages, context):
     chat_url = getattr(
         settings,
         "MODEL_DEPLOY_CHAT_URL",
-        os.getenv("MODEL_DEPLOY_CHAT_URL", "http://localhost:8001/api1/chat"),
+        os.getenv("MODEL_DEPLOY_CHAT_URL", "http://localhost:8001/chat"),
     )
     timeout = int(getattr(
         settings,

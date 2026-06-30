@@ -8,11 +8,12 @@ import overpy
 from django.core.cache import cache
 from django.http import JsonResponse
 
-from rest_framework import status, generics
+from rest_framework import status, generics, serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse, inline_serializer
+from drf_spectacular.types import OpenApiTypes
 
 from ..serializer import *
 from .common import CustomPageNumberPagination
@@ -23,12 +24,26 @@ class OverpassApiIntegration(generics.CreateAPIView):
     queryset = Incident.objects.all()
     serializer_class = IncidentSerializer
     @extend_schema(
-        description="This endpoint retrieves the locality information of incidents based on their geographic coordinates."
-        "It accepts latitude and longitude parameters to specify the location around which to search for incidents."
-        " The endpoint queries amenities such as pharmacies, mosques, schools, restaurants, bars, prisons, rivers, and marigots"
-        " within a 500-meter radius of the specified coordinates. It then returns a list of incidents found in the vicinity, "
-        "including details such as the type of amenity and its name.",
-        responses={200: IncidentSerializer(many=True), 404: "Not Found"},
+        tags=['Référentiel & Statistiques'],
+        operation_id='overpass_amenities_nearby',
+        summary="Lister les commodités proches (Overpass/OSM)",
+        description="Interroge l'API Overpass (OpenStreetMap) pour les commodités (pharmacie, mosquée, école, "
+        "restaurant, bar, prison, rivière, marigot, clinique) dans un rayon de 500 m autour des coordonnées "
+        "fournies, puis renvoie une liste d'objets `{amenity, name}`. Les résultats sont mis en cache. Endpoint public.",
+        request=None,
+        parameters=[
+            OpenApiParameter('latitude', OpenApiTypes.NUMBER, OpenApiParameter.QUERY, required=True, description="Latitude du point de recherche."),
+            OpenApiParameter('longitude', OpenApiTypes.NUMBER, OpenApiParameter.QUERY, required=True, description="Longitude du point de recherche."),
+        ],
+        responses={
+            200: inline_serializer(
+                name='OverpassAmenity',
+                fields={'amenity': serializers.CharField(), 'name': serializers.CharField()},
+                many=True,
+            ),
+            400: OpenApiResponse(description="Paramètres latitude/longitude manquants ou non numériques."),
+            503: OpenApiResponse(description="Service Overpass indisponible : {\"detail\": \"...\", \"error\": \"...\"}."),
+        },
     )
     def get(self, request, *args, **kwargs):
         lat = request.GET.get("latitude")

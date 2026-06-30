@@ -5,156 +5,67 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nouvelle demande de collaboration</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        
         body {
-            font-family: 'Inter', Arial, sans-serif;
-            background-color: #f4f7f6;
-            margin: 0;
-            padding: 0;
-            color: #2c3e50;
-            -webkit-font-smoothing: antialiased;
-        }
-        .wrapper {
-            width: 100%;
-            table-layout: fixed;
-            background-color: #f4f7f6;
-            padding-bottom: 40px;
-        }
-        .main-container {
-            max-width: 600px;
-            margin: 0 auto;
-            background-color: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            overflow: hidden;
-            margin-top: 40px;
-        }
-        .header {
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            padding: 30px 20px;
-            text-align: center;
-        }
-        .header h1 {
-            color: #ffffff;
-            margin: 0;
-            font-size: 22px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-        }
-        .content {
-            padding: 40px 30px;
-        }
-        .greeting {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 20px;
-            color: #1e3c72;
-        }
-        .message {
-            font-size: 15px;
+            font-family: Arial, sans-serif;
             line-height: 1.6;
-            color: #4a5568;
-            margin-bottom: 25px;
+            color: #333;
         }
-        .org-highlight {
-            display: inline-block;
-            background-color: #ebf4ff;
-            color: #2b6cb0;
-            font-weight: 700;
-            padding: 2px 8px;
-            border-radius: 4px;
+        .container {
+            margin: 0 auto;
+            max-width: 600px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
         }
-        .incident-card {
-            background-color: #f8fafc;
-            border-left: 4px solid #1e3c72;
-            padding: 15px 20px;
-            border-radius: 4px;
-            margin-bottom: 30px;
+        h1 {
+            font-size: 20px;
+            color: #5c5c5c;
         }
-        .incident-title {
-            font-size: 16px;
-            font-weight: 700;
-            color: #2d3748;
-            margin: 0 0 5px 0;
+        p {
+            margin-bottom: 15px;
         }
-        .incident-details {
-            font-size: 14px;
-            color: #718096;
-            margin: 0;
-        }
-        .btn-container {
-            text-align: center;
-            margin: 35px 0;
-        }
-        .btn {
-            background-color: #1e3c72;
-            color: #ffffff;
-            text-decoration: none;
-            padding: 14px 28px;
-            border-radius: 6px;
-            font-weight: 600;
-            font-size: 15px;
-            display: inline-block;
-            transition: background-color 0.3s ease;
-            box-shadow: 0 2px 5px rgba(30, 60, 114, 0.3);
-        }
-        .btn:hover {
-            background-color: #2a5298;
+        .highlight {
+            background-color: #ffeb3b;
+            padding: 3px 5px;
+            border-radius: 3px;
         }
         .footer {
-            background-color: #f8fafc;
-            padding: 20px;
-            text-align: center;
-            border-top: 1px solid #edf2f7;
-            font-size: 13px;
-            color: #a0aec0;
+            font-size: 12px;
+            color: #777;
+            margin-top: 20px;
         }
-        .footer p {
-            margin: 5px 0;
+        a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
 <body>
-    <div class="wrapper">
-        <div class="main-container">
-            <div class="header">
-                <h1>Demande de Collaboration</h1>
-            </div>
-            
-            <div class="content">
-                <div class="greeting">Bonjour {{ organisation }},</div>
-                
-                <div class="message">
-                    L'organisation <span class="org-highlight">{{ requesting_organisation }}</span> souhaite apporter son aide et collaborer avec vous sur l'incident suivant :
-                </div>
+    <div class="container">
+        <h1>Nouvelle demande de collaboration</h1>
+        <p>Bonjour <strong>{{ organisation }}</strong>,</p>
 
-                <div class="incident-card">
-                    <p class="incident-title">"{{ incident_title }}"</p>
-                    <p class="incident-details">
-                        📍 <strong>Zone :</strong> {{ incident_zone }}<br>
-                        📅 <strong>Date :</strong> {{ incident_creation_date|date:"d M Y" }}
-                    </p>
-                </div>
+        <p>L'organisation <strong>{{ requesting_organisation }}</strong> souhaite collaborer sur l'incident
+           <strong>"{{ incident_title }}"</strong>,
+           situé dans la zone <strong>{{ incident_zone }}</strong>, déclaré le <strong>{{ incident_creation_date }}</strong>.</p>
 
-                <div class="message">
-                    Connectez-vous à votre tableau de bord pour consulter les détails et accepter ou décliner cette offre de collaboration.
-                </div>
+        <p>Merci de vous connecter à votre compte pour obtenir plus d'informations sur cette demande de collaboration.</p>
 
-                <div class="btn-container">
-                    <a href="http://app.map-action.com/admin/incident_view_collaboration/{{ incident_id }}" class="btn">Examiner la demande</a>
-                </div>
+        <p>Voici le lien direct pour accéder à la collaboration : 
+           <a href="http://app.map-action.com/admin/incident_view_collaboration/{{incident_id}}">
+               Voir la demande de collaboration
+           </a>
+        </p>
 
-                <div class="message" style="margin-bottom: 0;">
-                    Cordialement,<br>
-                    <strong>L'équipe Map Action</strong>
-                </div>
-            </div>
+        <p>Cordialement,</p>
+        <p>L'équipe <strong>Map Action</strong></p>
 
-            <div class="footer">
-                <p>Cet email a été généré automatiquement, merci de ne pas y répondre.</p>
-                <p>&copy; 2026 Map Action. Tous droits réservés.</p>
-            </div>
+        <div class="footer">
+            <p>Ce message a été envoyé automatiquement. Merci de ne pas y répondre.</p>
         </div>
     </div>
 </body>

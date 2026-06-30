@@ -110,6 +110,8 @@ class SupabaseStorage(Storage):
             return False
 
     def url(self, name):
+        if not name:
+            return None
         try:
             storage_public = os.environ.get('SUPABASE_STORAGE_PUBLIC', 'False').lower() in ('true', '1', 't')
             if storage_public:
@@ -122,22 +124,10 @@ class SupabaseStorage(Storage):
             if isinstance(signed, dict):
                 return signed.get("signedURL") or signed.get("signed_url") or None
             return signed  # fallback si lib renvoie directement une str
-        except StorageException:
-            # essai fallback naïf (inutile si path correct)
-            try:
-                filename = name.split("/")[-1]
-                storage_public = os.environ.get('SUPABASE_STORAGE_PUBLIC', 'False').lower() in ('true', '1', 't')
-                if storage_public:
-                    public = self._get_storage().get_public_url(filename)
-                    if isinstance(public, dict):
-                        return public.get('publicUrl') or public.get('publicURL') or public.get('public_url') or None
-                    return public
-                signed = self._get_storage().create_signed_url(filename, self.signed_url_expiry)
-                if isinstance(signed, dict):
-                    return signed.get("signedURL") or signed.get("signed_url") or None
-                return signed
-            except StorageException:
-                return None
+        except Exception:
+            # Dev-safe: missing config/object, network or protocol errors must never
+            # 500 a response. Return None so the field serializes as null.
+            return None
 
     def size(self, name):
         try:

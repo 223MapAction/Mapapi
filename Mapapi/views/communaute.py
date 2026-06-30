@@ -2,16 +2,48 @@
 from rest_framework import status, generics
 from rest_framework.response import Response
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, OpenApiResponse
+from drf_spectacular.types import OpenApiTypes
 
 from ..serializer import *
 from .common import CustomPageNumberPagination
 
 
-@extend_schema(
-    description="Endpoint allowing retrieval, updating, and deletion of a community.",
-    request=CommunauteSerializer,
-    responses={200: CommunauteSerializer, 404: "Not Found"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Messages & Communauté'],
+        operation_id='communities_retrieve',
+        summary="Récupérer une communauté",
+        description="Renvoie une communauté par son identifiant. Endpoint public (aucune authentification requise).",
+        request=None,
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant de la communauté.")],
+        responses={200: CommunauteSerializer, 404: OpenApiResponse(description="Communauté introuvable (corps vide).")},
+    ),
+    put=extend_schema(
+        tags=['Messages & Communauté'],
+        operation_id='communities_update',
+        summary="Mettre à jour une communauté",
+        description="Remplace l'intégralité d'une communauté existante. Endpoint public.",
+        request=CommunauteSerializer,
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant de la communauté.")],
+        responses={
+            200: CommunauteSerializer,
+            400: OpenApiResponse(description="Erreurs de validation du sérialiseur."),
+            404: OpenApiResponse(description="Communauté introuvable (corps vide)."),
+        },
+    ),
+    delete=extend_schema(
+        tags=['Messages & Communauté'],
+        operation_id='communities_destroy',
+        summary="Supprimer une communauté",
+        description="Supprime définitivement une communauté. Endpoint public.",
+        request=None,
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant de la communauté.")],
+        responses={
+            204: OpenApiResponse(description="Communauté supprimée."),
+            404: OpenApiResponse(description="Communauté introuvable (corps vide)."),
+        },
+    ),
 )
 class CommunauteAPIView(generics.CreateAPIView):
     permission_classes = ()
@@ -45,10 +77,26 @@ class CommunauteAPIView(generics.CreateAPIView):
         item.delete()
         return Response(status=204)
 
-@extend_schema(
-    description="Endpoint allowing retrieval and creating of a community.",
-    request=CommunauteSerializer,
-    responses={201: CommunauteSerializer, 400: "Serializer error"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Messages & Communauté'],
+        operation_id='communities_list',
+        summary="Lister les communautés",
+        description="Renvoie la liste paginée des communautés. Endpoint public.",
+        request=None,
+        responses={200: CommunauteSerializer(many=True)},
+    ),
+    post=extend_schema(
+        tags=['Messages & Communauté'],
+        operation_id='communities_create',
+        summary="Créer une communauté",
+        description="Crée une nouvelle communauté. Endpoint public.",
+        request=CommunauteSerializer,
+        responses={
+            201: CommunauteSerializer,
+            400: OpenApiResponse(description="Erreurs de validation du sérialiseur."),
+        },
+    ),
 )
 class CommunauteAPIListView(generics.CreateAPIView):
     permission_classes = ()
