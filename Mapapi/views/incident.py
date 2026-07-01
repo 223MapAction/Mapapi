@@ -201,7 +201,7 @@ class IncidentByZoneAPIView(generics.CreateAPIView):
                     'org_assignments__organisation',
                     'collaboration_set__user__organisation_member',
                 )
-                .order_by('-pk')
+                .order_by('-created_at')
             )
             item = visible_incidents_qs(base, request.user)
             serializer = IncidentGetSerializer(item, many=True)
@@ -390,7 +390,7 @@ class IncidentAPIListView(generics.CreateAPIView):
                 'org_assignments__organisation',
                 'collaboration_set__user__organisation_member',
             )
-            .order_by('-pk')
+            .order_by('-created_at')
         )
         items = visible_incidents_qs(base, request.user)
         # Recherche + filtres (onglet incidents) : ?search= (titre/description/zone),
