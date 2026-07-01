@@ -1289,6 +1289,17 @@ class IncidentFilterView(APIView):
         elif filter_type == 'custom_range' and custom_start and custom_end:
             incidents = incidents.filter(created_at__date__range=[custom_start, custom_end])
 
+        # Pagination OPT-IN pour un chargement progressif de la carte : si ?page ou
+        # ?page_size est fourni, on renvoie une page {count, next, previous, results}
+        # (marqueurs légers IncidentMapSerializer, ?page_size plafonné à 100) ; sinon
+        # la liste brute complète (rétro-compatible avec les consommateurs existants).
+        if 'page' in request.query_params or 'page_size' in request.query_params:
+            paginator = IncidentPagination()
+            page = paginator.paginate_queryset(
+                incidents.order_by('-created_at'), request, view=self)
+            serializer = IncidentMapSerializer(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+
         serializer = IncidentMapSerializer(incidents, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
