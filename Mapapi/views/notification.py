@@ -44,6 +44,23 @@ class NotificationViewSet(viewsets.ModelViewSet):
             qs = qs.filter(read=(str(read).lower() in ('1', 'true', 'yes')))
         return qs
 
+    def list(self, request, *args, **kwargs):
+        """Liste paginée + compteurs GLOBAUX lu/non-lu de l'utilisateur.
+
+        `unread_count`, `read_count` et `total_count` sont calculés sur TOUTES les
+        notifications de l'utilisateur (indépendamment du filtre `?read`), pour
+        alimenter un badge sans second appel.
+        """
+        response = super().list(request, *args, **kwargs)
+        base = Notification.objects.filter(user=request.user)
+        unread = base.filter(read=False).count()
+        read = base.filter(read=True).count()
+        if isinstance(response.data, dict):
+            response.data['unread_count'] = unread
+            response.data['read_count'] = read
+            response.data['total_count'] = unread + read
+        return response
+
     @staticmethod
     def _as_bool(val, default=True):
         if isinstance(val, bool):
@@ -131,3 +148,10 @@ class ActivityFeedView(generics.ListAPIView):
         if org_id:
             qs = qs.exclude(user__organisation_member_id=org_id)
         return qs  # tri par défaut depuis Meta (-created_at, -timeStamp)
+
+    def list(self, request, *args, **kwargs):
+        """Liste paginée + `total_count` (nombre total d'activités du flux)."""
+        response = super().list(request, *args, **kwargs)
+        if isinstance(response.data, dict):
+            response.data['total_count'] = self.get_queryset().count()
+        return response
