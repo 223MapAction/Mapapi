@@ -3,7 +3,7 @@ import string
 import random
 import logging
 
-from Mapapi.views.common import CustomPageNumberPagination
+from Mapapi.views.common import CustomPageNumberPagination, deaccent
 from django.db.models import Count, Q
 
 logger = logging.getLogger(__name__)
@@ -172,6 +172,61 @@ class OrganisationViewSet(generics.ListCreateAPIView, generics.RetrieveUpdateDes
                 status=status.HTTP_403_FORBIDDEN,
             )
         return super().update(request, *args, **kwargs)
+
+
+class NotFieldAgent(permissions.BasePermission):
+    """Autorise tout utilisateur authentifié SAUF l'agent de terrain (mobile-only)."""
+
+    message = "Non accessible à l'agent de terrain."
+
+    def has_permission(self, request, view):
+        u = request.user
+        if not (u and u.is_authenticated):
+            return False
+        return is_super_admin(u) or getattr(u, 'org_role', None) != ORG_ROLE_FIELD
+
+
+@extend_schema(
+    tags=['Organisations & Membres'],
+    operation_id='organisations_others_list',
+    summary='Autres organisations (hors la mienne)',
+    description="Liste paginée des organisations SAUF celle de l'utilisateur connecté. "
+                "Recherche `?search=` (nom / acronyme / sous-domaine / pays, insensible à la "
+                "casse et aux accents). Pagination `?page`/`?page_size` (chargement « en "
+                "savoir plus »). Accessible à tous les rôles dashboard SAUF l'agent de terrain.",
+    parameters=[
+        OpenApiParameter('search', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+                         description="Recherche nom / acronyme / sous-domaine / pays."),
+        OpenApiParameter('page', OpenApiTypes.INT, OpenApiParameter.QUERY, required=False,
+                         description="Numéro de page (chargement progressif « en savoir plus »)."),
+        OpenApiParameter('page_size', OpenApiTypes.INT, OpenApiParameter.QUERY, required=False,
+                         description="Taille de page."),
+    ],
+    responses={200: OrganisationSerializer(many=True)},
+)
+class OtherOrganisationsView(generics.ListAPIView):
+    """GET /organisations/others/ — organisations autres que celle du user connecté."""
+
+    serializer_class = OrganisationSerializer
+    permission_classes = [NotFieldAgent]
+    pagination_class = CustomPageNumberPagination
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = Organisation.objects.all().order_by('-created_at')
+        own = getattr(user, 'organisation_member_id', None)
+        if own:
+            qs = qs.exclude(id=own)
+        search = (self.request.query_params.get('search') or '').strip()
+        if search:
+            ua = deaccent(search)
+            qs = qs.filter(
+                Q(name__unaccent__icontains=ua)
+                | Q(acronym__unaccent__icontains=ua)
+                | Q(subdomain__unaccent__icontains=ua)
+                | Q(intervention_country__unaccent__icontains=ua)
+            )
+        return qs
 
 
 @extend_schema(
