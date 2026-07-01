@@ -7,6 +7,7 @@ Imported by each domain view module with:
 import logging
 import random
 import string
+import unicodedata
 
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
@@ -60,6 +61,16 @@ def get_random_digits(length=6):
 def get_csrf_token(request):
     csrf_token = get_token(request)
     return JsonResponse({'csrf_token': csrf_token})
+
+
+def deaccent(text):
+    """Retire les accents/diacritiques d'un terme de recherche (côté valeur).
+
+    À combiner avec le lookup ``__unaccent`` côté colonne (extension Postgres
+    ``unaccent``) : la recherche devient insensible à la casse ET aux accents
+    (« secheresse » trouve « Sécheresse », et inversement).
+    """
+    return ''.join(c for c in unicodedata.normalize('NFKD', text or '') if not unicodedata.combining(c))
 
 
 # Constant preserved from legacy views.py

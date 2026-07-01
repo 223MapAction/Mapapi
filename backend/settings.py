@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.postgres',  # active le lookup __unaccent (recherche sans accents)
     'corsheaders',
     'rest_framework',
     'Mapapi',
