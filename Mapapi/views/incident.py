@@ -61,6 +61,9 @@ def visible_incidents_qs(base_qs, user):
     authentifiés (endpoints publics) restent limités aux incidents publics pour
     ne pas exposer les incidents internes (is_public=False).
     """
+    # Les incidents en corbeille (is_deleted) ne figurent jamais dans les listes
+    # (cohérent avec le total du dashboard, qui exclut aussi la corbeille).
+    base_qs = base_qs.filter(is_deleted=False)
     if user and getattr(user, 'is_authenticated', False):
         return base_qs
     return base_qs.filter(is_public=True)
