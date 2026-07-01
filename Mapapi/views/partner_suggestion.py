@@ -4,7 +4,12 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import (
+    extend_schema, extend_schema_view, OpenApiParameter, OpenApiResponse,
+    OpenApiExample, inline_serializer,
+)
+from drf_spectacular.types import OpenApiTypes
+from rest_framework import serializers
 
 from ..models import (
     Incident, PartnerSuggestion, Collaboration,
@@ -17,6 +22,21 @@ from ..permissions import (
 )
 
 
+@extend_schema_view(get=extend_schema(
+    tags=['Suggestions de partenaires'],
+    operation_id='suggestions_received_list',
+    summary="Mes suggestions reçues",
+    description=(
+        "Liste les suggestions de partenariat où l'utilisateur connecté est le partenaire "
+        "proposé, triées par date décroissante. Authentification requise."
+    ),
+    parameters=[
+        OpenApiParameter('status', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+                         enum=['pending', 'accepted', 'rejected'],
+                         description="Filtre optionnel sur le statut de la suggestion."),
+    ],
+    responses={200: PartnerSuggestionSerializer(many=True)},
+))
 class MyReceivedSuggestionsView(generics.ListAPIView):
     """
     GET /my-suggestions/received/  — Liste les suggestions où JE suis le partenaire proposé.
@@ -39,6 +59,21 @@ class MyReceivedSuggestionsView(generics.ListAPIView):
         return qs
 
 
+@extend_schema_view(get=extend_schema(
+    tags=['Suggestions de partenaires'],
+    operation_id='suggestions_sent_list',
+    summary="Mes suggestions envoyées",
+    description=(
+        "Liste les suggestions de partenariat créées par l'utilisateur connecté, triées par "
+        "date décroissante. Authentification requise."
+    ),
+    parameters=[
+        OpenApiParameter('status', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+                         enum=['pending', 'accepted', 'rejected'],
+                         description="Filtre optionnel sur le statut de la suggestion."),
+    ],
+    responses={200: PartnerSuggestionSerializer(many=True)},
+))
 class MySentSuggestionsView(generics.ListAPIView):
     """
     GET /my-suggestions/sent/  — Liste les suggestions QUE J'AI faites.
@@ -58,6 +93,59 @@ class MySentSuggestionsView(generics.ListAPIView):
         return qs
 
 
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Suggestions de partenaires'],
+        operation_id='suggestions_list',
+        summary="Lister les suggestions d'un incident",
+        description=(
+            "Liste les suggestions de partenariat de l'incident. Réservé au leader ou à un "
+            "contributeur (`IsIncidentLeaderOrContributor`)."
+        ),
+        parameters=[
+            OpenApiParameter('incident_id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                             description="Identifiant de l'incident."),
+            OpenApiParameter('status', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+                             enum=['pending', 'accepted', 'rejected'],
+                             description="Filtre optionnel sur le statut de la suggestion."),
+        ],
+        responses={
+            200: PartnerSuggestionSerializer(many=True),
+            403: OpenApiResponse(description="Ni leader ni contributeur de l'incident."),
+        },
+    ),
+    post=extend_schema(
+        tags=['Suggestions de partenaires'],
+        operation_id='suggestions_create',
+        summary="Créer une suggestion de partenaire",
+        description=(
+            "Crée une suggestion de partenariat sur l'incident. Réservé au leader ou à un "
+            "contributeur (`IsIncidentLeaderOrContributor`). `suggested_by` est renseigné "
+            "automatiquement. Envoyer soit `suggested_partner` (User), soit "
+            "`suggested_organisation` (org résolue vers son admin/bureau). Refusé si l'incident "
+            "est clôturé."
+        ),
+        parameters=[
+            OpenApiParameter('incident_id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                             description="Identifiant de l'incident."),
+        ],
+        request=PartnerSuggestionSerializer,
+        responses={
+            201: PartnerSuggestionSerializer,
+            400: OpenApiResponse(description="Données invalides ou incident clôturé."),
+            403: OpenApiResponse(description="Ni leader ni contributeur de l'incident."),
+        },
+        examples=[
+            OpenApiExample(
+                'Suggestion via organisation',
+                value={'suggested_organisation': '3fa85f64-5717-4562-b3fc-2c963f66afa6',
+                       'suggested_role': 'contributor',
+                       'justification': "Expertise locale pertinente"},
+                request_only=True,
+            ),
+        ],
+    ),
+)
 class PartnerSuggestionListCreateView(generics.ListCreateAPIView):
     """
     GET  /incidents/<incident_id>/suggestions/  — liste (tous collaborateurs)
@@ -88,6 +176,25 @@ class PartnerSuggestionListCreateView(generics.ListCreateAPIView):
         )
 
 
+@extend_schema_view(get=extend_schema(
+    tags=['Suggestions de partenaires'],
+    operation_id='suggestions_retrieve',
+    summary="Détail d'une suggestion",
+    description=(
+        "Détail d'une suggestion de partenariat. Accessible à tout collaborateur de "
+        "l'incident (`IsIncidentCollaborator`)."
+    ),
+    parameters=[
+        OpenApiParameter('incident_id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                         description="Identifiant de l'incident."),
+        OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                         description="Identifiant de la suggestion."),
+    ],
+    responses={
+        200: PartnerSuggestionSerializer,
+        404: OpenApiResponse(description="Suggestion non trouvée."),
+    },
+))
 class PartnerSuggestionDetailView(generics.RetrieveAPIView):
     """
     GET /incidents/<incident_id>/suggestions/<pk>/  — détail
@@ -101,10 +208,28 @@ class PartnerSuggestionDetailView(generics.RetrieveAPIView):
         )
 
 
-@extend_schema(
-    description="Accepter une suggestion de partenaire. Crée une Collaboration accepted avec le rôle suggéré.",
-    responses={200: PartnerSuggestionSerializer},
-)
+@extend_schema_view(post=extend_schema(
+    tags=['Suggestions de partenaires'],
+    operation_id='suggestions_accept',
+    summary="Accepter une suggestion",
+    description=(
+        "Accepte une suggestion en attente : crée (ou met à jour) une `Collaboration` "
+        "`accepted` pour le partenaire avec le rôle suggéré, et passe la suggestion à "
+        "`accepted`. Réservé au leader (`IsIncidentLeader`)."
+    ),
+    parameters=[
+        OpenApiParameter('incident_id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                         description="Identifiant de l'incident."),
+        OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                         description="Identifiant de la suggestion."),
+    ],
+    request=None,
+    responses={
+        200: PartnerSuggestionSerializer,
+        400: OpenApiResponse(description="La suggestion n'est pas en attente (déjà traitée)."),
+        404: OpenApiResponse(description="Suggestion non trouvée."),
+    },
+))
 class PartnerSuggestionAcceptView(APIView):
     """POST /incidents/<incident_id>/suggestions/<pk>/accept/"""
     permission_classes = [IsAuthenticated, IsIncidentLeader]
@@ -148,10 +273,27 @@ class PartnerSuggestionAcceptView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-@extend_schema(
-    description="Rejeter une suggestion de partenaire.",
-    responses={200: PartnerSuggestionSerializer},
-)
+@extend_schema_view(post=extend_schema(
+    tags=['Suggestions de partenaires'],
+    operation_id='suggestions_reject',
+    summary="Rejeter une suggestion",
+    description=(
+        "Rejette une suggestion en attente : la passe à `rejected`. Réservé au leader "
+        "(`IsIncidentLeader`)."
+    ),
+    parameters=[
+        OpenApiParameter('incident_id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                         description="Identifiant de l'incident."),
+        OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                         description="Identifiant de la suggestion."),
+    ],
+    request=None,
+    responses={
+        200: PartnerSuggestionSerializer,
+        400: OpenApiResponse(description="La suggestion n'est pas en attente (déjà traitée)."),
+        404: OpenApiResponse(description="Suggestion non trouvée."),
+    },
+))
 class PartnerSuggestionRejectView(APIView):
     """POST /incidents/<incident_id>/suggestions/<pk>/reject/"""
     permission_classes = [IsAuthenticated, IsIncidentLeader]

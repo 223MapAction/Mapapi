@@ -1,30 +1,101 @@
 """Notification & user-action endpoints."""
-from rest_framework import status, viewsets, generics
+from rest_framework import viewsets, generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view
+
+from drf_spectacular.utils import OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 
 from ..serializer import *
-from .common import CustomPageNumberPagination
+from .common import CustomPageNumberPagination, NotificationPagination
 
 
-@extend_schema(
-    description="Endpoint for filtering notifications by user ",
-    responses={200: NotificationSerializer()},
+@extend_schema_view(
+    list=extend_schema(
+        tags=['Notifications'],
+        operation_id='notifications_list',
+        summary='Mes notifications',
+        description=(
+            "Toutes les notifications de l'utilisateur connecté, **plus récentes "
+            "d'abord**, paginées (20/page, `?page=&page_size=`). Chaque notification "
+            "porte un champ `link` (cible de redirection au clic). Filtre `?read=true|false` "
+            "(ex. `?read=false` pour les non lues → `count` = nombre de non lues). "
+            "Authentification requise."
+        ),
+        parameters=[
+            OpenApiParameter('read', OpenApiTypes.BOOL, OpenApiParameter.QUERY,
+                             description="Filtre lues/non lues (true|false)."),
+        ],
+        responses={200: NotificationSerializer(many=True)},
+    )
 )
-
 class NotificationViewSet(viewsets.ModelViewSet):
     queryset = Notification.objects.all()
     serializer_class = NotificationSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = NotificationPagination
 
     def get_queryset(self):
-        user = self.request.user
-        return Notification.objects.filter(user=user, colaboration__status='pending')
-@extend_schema(
-    description="Endpoint for retrieving user action",
-    responses={200: UserActionSerializer()},
+        qs = Notification.objects.filter(user=self.request.user).order_by('-created_at')
+        read = self.request.query_params.get('read')
+        if read is not None:
+            qs = qs.filter(read=(str(read).lower() in ('1', 'true', 'yes')))
+        return qs
+
+    @staticmethod
+    def _as_bool(val, default=True):
+        if isinstance(val, bool):
+            return val
+        if val is None:
+            return default
+        return str(val).lower() in ('1', 'true', 'yes')
+
+    @extend_schema(
+        tags=['Notifications'],
+        operation_id='notifications_mark_read',
+        summary='Marquer une notification comme lue',
+        description="Met à jour le statut de lecture d'UNE notification (au clic). "
+                    "Seul le champ `read` est modifiable (les autres sont ignorés) ; "
+                    "défaut `read=true`. Limité aux notifications de l'utilisateur connecté.",
+        request=None,
+        responses={200: NotificationSerializer},
+    )
+    def partial_update(self, request, *args, **kwargs):
+        """PATCH /notifications/<pk>/ — bascule `read` (true par défaut).
+
+        ``get_object`` s'appuie sur ``get_queryset`` (filtré par utilisateur) :
+        impossible de toucher la notification d'un autre (→ 404).
+        """
+        instance = self.get_object()
+        instance.read = self._as_bool(request.data.get('read', True))
+        instance.save(update_fields=['read'])
+        return Response(self.get_serializer(instance).data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        tags=['Notifications'],
+        operation_id='notifications_mark_all_read',
+        summary='Tout marquer comme lu',
+        description="Marque TOUTES les notifications non lues de l'utilisateur connecté "
+                    "comme lues. Renvoie le nombre de notifications mises à jour.",
+        request=None,
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def mark_all_read(self, request, *args, **kwargs):
+        """POST /notifications/mark-all-read/ — marque toutes mes notifs comme lues."""
+        updated = Notification.objects.filter(user=request.user, read=False).update(read=True)
+        return Response({'marked_read': updated}, status=status.HTTP_200_OK)
+
+
+@extend_schema_view(
+    list=extend_schema(
+        tags=['Notifications'],
+        operation_id='user_actions_list',
+        summary='Mes actions (journal)',
+        description="Journal des actions de l'utilisateur connecté. Authentification requise.",
+        responses={200: UserActionSerializer(many=True)},
+    )
 )
 class UserActionView(viewsets.ModelViewSet):
     queryset = UserAction.objects.all()
@@ -36,3 +107,27 @@ class UserActionView(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+
+@extend_schema(
+    tags=['Notifications'],
+    operation_id='activity_feed',
+    summary="Flux d'activité (autres organisations)",
+    description="Activité récente de la plateforme **en dehors de l'organisation de "
+                "l'utilisateur connecté** (prises en charge / résolutions d'incidents, "
+                "etc.), plus récente d'abord, paginée (20/page). Chaque élément expose "
+                "`action`, `user_name`, `organisation_name`, `created_at`. Auth requise.",
+    responses={200: ActivityFeedSerializer(many=True)},
+)
+class ActivityFeedView(generics.ListAPIView):
+    """GET /activity-feed/ — activité de la plateforme hors organisation connectée."""
+    permission_classes = [IsAuthenticated]
+    serializer_class = ActivityFeedSerializer
+    pagination_class = NotificationPagination
+
+    def get_queryset(self):
+        qs = UserAction.objects.select_related('user', 'user__organisation_member')
+        org_id = getattr(self.request.user, 'organisation_member_id', None)
+        if org_id:
+            qs = qs.exclude(user__organisation_member_id=org_id)
+        return qs  # tri par défaut depuis Meta (-created_at, -timeStamp)

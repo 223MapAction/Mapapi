@@ -3,15 +3,68 @@ from rest_framework import status, generics
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, OpenApiResponse
+from drf_spectacular.types import OpenApiTypes
 
 from ..serializer import *
 from .common import CustomPageNumberPagination
 
 
-@extend_schema(
-    description="Endpoint allowing retrival, updating and deletion of zone.",
-    responses={200: ZoneSerializer, 404: "zone not found"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Zones'],
+        operation_id='zones_retrieve',
+        summary="Détails d'une zone",
+        description="Retourne une zone par son id. Endpoint public.",
+        parameters=[
+            OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                             description="id de la zone"),
+        ],
+        responses={200: ZoneSerializer, 404: OpenApiResponse(description="Zone introuvable")},
+    ),
+    put=extend_schema(
+        tags=['Zones'],
+        operation_id='zones_update',
+        summary="Mettre à jour une zone",
+        description="Met à jour entièrement une zone existante. Endpoint public.",
+        parameters=[
+            OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                             description="id de la zone"),
+        ],
+        request=ZoneSerializer,
+        responses={
+            200: ZoneSerializer,
+            400: OpenApiResponse(description="Erreurs de validation"),
+            404: OpenApiResponse(description="Zone introuvable"),
+        },
+    ),
+    delete=extend_schema(
+        tags=['Zones'],
+        operation_id='zones_destroy',
+        summary="Supprimer une zone",
+        description="Supprime une zone par son id. Endpoint public.",
+        parameters=[
+            OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                             description="id de la zone"),
+        ],
+        responses={
+            204: OpenApiResponse(description="Zone supprimée"),
+            404: OpenApiResponse(description="Zone introuvable"),
+        },
+    ),
+    post=extend_schema(
+        tags=['Zones'],
+        operation_id='zones_create_at_id',
+        summary="Créer une zone (route /zone/<id>)",
+        description="Hérité de `CreateAPIView` : crée une nouvelle zone (l'id du chemin "
+                    "est ignoré). Préférer `POST /zone/`. Endpoint public.",
+        parameters=[
+            OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                             description="ignoré"),
+        ],
+        request=ZoneSerializer,
+        responses={201: ZoneSerializer, 400: OpenApiResponse(description="Erreurs de validation")},
+    ),
 )
 class ZoneAPIView(generics.CreateAPIView):
     permission_classes = (
@@ -46,10 +99,25 @@ class ZoneAPIView(generics.CreateAPIView):
         item.delete()
         return Response(status=204)
 
-@extend_schema(
-    description="Endpoint allowing retrival and creating of zone.",
-    request=ZoneSerializer,
-    responses={201: ZoneSerializer, 400: "Bad request"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Zones'],
+        operation_id='zones_list',
+        summary="Lister les zones",
+        description="Retourne la liste paginée des zones. Endpoint public.",
+        responses={
+            200: ZoneSerializer(many=True),
+            500: OpenApiResponse(description="Erreur serveur (`{error}`)"),
+        },
+    ),
+    post=extend_schema(
+        tags=['Zones'],
+        operation_id='zones_create',
+        summary="Créer une zone",
+        description="Crée une nouvelle zone. Endpoint public.",
+        request=ZoneSerializer,
+        responses={201: ZoneSerializer, 400: OpenApiResponse(description="Erreurs de validation")},
+    ),
 )
 class ZoneAPIListView(generics.ListCreateAPIView):
     permission_classes = (

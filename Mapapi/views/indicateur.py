@@ -2,15 +2,53 @@
 from rest_framework import status, generics
 from rest_framework.response import Response
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import (
+    extend_schema, extend_schema_view, OpenApiParameter, OpenApiResponse,
+    inline_serializer,
+)
+from drf_spectacular.types import OpenApiTypes
+from rest_framework import serializers
 
 from ..serializer import *
 from .common import CustomPageNumberPagination
 
 
-@extend_schema(
-    description="Endpoint allowing retrival, updating, and deletion of an indicator",
-    responses={200: IndicateurSerializer, 404: "indicator not found"}
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Catégories & Indicateurs'],
+        operation_id='indicators_retrieve',
+        summary="Détail d'un indicateur",
+        description="Retourne un indicateur par son identifiant. Accès public.",
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant de l'indicateur")],
+        request=None,
+        responses={200: IndicateurSerializer, 404: OpenApiResponse(description="Indicateur introuvable")},
+    ),
+    put=extend_schema(
+        tags=['Catégories & Indicateurs'],
+        operation_id='indicators_update',
+        summary="Mettre à jour un indicateur",
+        description="Met à jour un indicateur existant. Accès public.",
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant de l'indicateur")],
+        request=IndicateurSerializer,
+        responses={
+            200: IndicateurSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            404: OpenApiResponse(description="Indicateur introuvable"),
+        },
+    ),
+    delete=extend_schema(
+        tags=['Catégories & Indicateurs'],
+        operation_id='indicators_destroy',
+        summary="Supprimer un indicateur",
+        description="Supprime un indicateur. Accès public.",
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant de l'indicateur")],
+        request=None,
+        responses={
+            204: OpenApiResponse(description="Indicateur supprimé"),
+            404: OpenApiResponse(description="Indicateur introuvable"),
+        },
+    ),
+    post=extend_schema(exclude=True),
 )
 class IndicateurAPIView(generics.CreateAPIView):
     permission_classes = (
@@ -45,9 +83,23 @@ class IndicateurAPIView(generics.CreateAPIView):
         item.delete()
         return Response(status=204)
 
-@extend_schema(
-    description="Endpoint allowing retrival and creating of indicator",
-    responses={201: IndicateurSerializer, 400: "serializer error"}
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Catégories & Indicateurs'],
+        operation_id='indicators_list',
+        summary="Lister les indicateurs",
+        description="Retourne la liste paginée des indicateurs. Accès public.",
+        request=None,
+        responses={200: IndicateurSerializer(many=True)},
+    ),
+    post=extend_schema(
+        tags=['Catégories & Indicateurs'],
+        operation_id='indicators_create',
+        summary="Créer un indicateur",
+        description="Crée un nouvel indicateur. Accès public.",
+        request=IndicateurSerializer,
+        responses={201: IndicateurSerializer, 400: OpenApiResponse(description="Données invalides")},
+    ),
 )
 class IndicateurAPIListView(generics.CreateAPIView):
     permission_classes = (
@@ -69,9 +121,31 @@ class IndicateurAPIListView(generics.CreateAPIView):
             return Response(serializer.data, status=201)
         return Response(serializer.errors, status=400)
 
-@extend_schema(
-    description="Endpoint for retrieving statistics on incidents based on indicators.",
-    responses={200: "Statistics on incidents retrieved successfully."},
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Catégories & Indicateurs'],
+        operation_id='indicators_incident_stats',
+        summary="Statistiques incidents par indicateur",
+        description="Retourne la répartition (nombre et pourcentage) des incidents par indicateur, sur l'ensemble des incidents. Accès public.",
+        request=None,
+        responses={200: inline_serializer(
+            name='IndicatorsIncidentStatsResponse',
+            fields={
+                'status': serializers.CharField(),
+                'message': serializers.CharField(),
+                'data': inline_serializer(
+                    name='IndicatorsIncidentStatItem',
+                    fields={
+                        'indicateur': serializers.CharField(),
+                        'number': serializers.IntegerField(),
+                        'pourcentage': serializers.FloatField(),
+                    },
+                    many=True,
+                ),
+            },
+        )},
+    ),
+    post=extend_schema(exclude=True),
 )
 class IndicateurOnIncidentAPIListView(generics.CreateAPIView):
     permission_classes = (
@@ -99,9 +173,32 @@ class IndicateurOnIncidentAPIListView(generics.CreateAPIView):
             "data": listData
         }, status=status.HTTP_200_OK)
 
-@extend_schema(
-    description="Endpoint for retrieving statistics on incidents based on indicators by zone.",
-    responses={200: "Statistics on incidents retrieved successfully."},
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Catégories & Indicateurs'],
+        operation_id='indicators_incident_stats_by_zone',
+        summary="Statistiques incidents par indicateur (zone)",
+        description="Retourne la répartition des incidents par indicateur, restreinte à une zone. Accès public.",
+        parameters=[OpenApiParameter('zone', OpenApiTypes.STR, OpenApiParameter.PATH, description="Nom de la zone")],
+        request=None,
+        responses={200: inline_serializer(
+            name='IndicatorsIncidentStatsByZoneResponse',
+            fields={
+                'status': serializers.CharField(),
+                'message': serializers.CharField(),
+                'data': inline_serializer(
+                    name='IndicatorsIncidentStatsByZoneItem',
+                    fields={
+                        'indicateur': serializers.CharField(),
+                        'number': serializers.IntegerField(),
+                        'pourcentage': serializers.FloatField(),
+                    },
+                    many=True,
+                ),
+            },
+        )},
+    ),
+    post=extend_schema(exclude=True),
 )
 class IndicateurOnIncidentByZoneAPIView(generics.CreateAPIView):
     permission_classes = (
@@ -130,9 +227,32 @@ class IndicateurOnIncidentByZoneAPIView(generics.CreateAPIView):
             "data": listData
         }, status=status.HTTP_200_OK)
 
-@extend_schema(
-    description="Endpoint for retrieving statistics on incidents based on indicators for a elu (organisation) user.",
-    responses={200: "Statistics on incidents for the user retrieved successfully."},
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Catégories & Indicateurs'],
+        operation_id='indicators_incident_stats_by_elu',
+        summary="Statistiques incidents par indicateur (élu)",
+        description="Retourne la répartition des incidents par indicateur pour les incidents signalés par un utilisateur (élu/organisation). Accès public.",
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant de l'utilisateur (élu/organisation)")],
+        request=None,
+        responses={200: inline_serializer(
+            name='IndicatorsIncidentStatsByEluResponse',
+            fields={
+                'status': serializers.CharField(),
+                'message': serializers.CharField(),
+                'data': inline_serializer(
+                    name='IndicatorsIncidentStatsByEluItem',
+                    fields={
+                        'indicateur': serializers.CharField(),
+                        'number': serializers.IntegerField(),
+                        'pourcentage': serializers.FloatField(),
+                    },
+                    many=True,
+                ),
+            },
+        )},
+    ),
+    post=extend_schema(exclude=True),
 )
 class IndicateurOnIncidentByEluAPIView(generics.CreateAPIView):
     permission_classes = (

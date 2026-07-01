@@ -4,16 +4,51 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import (
+    extend_schema, extend_schema_view, OpenApiParameter, OpenApiResponse,
+)
+from drf_spectacular.types import OpenApiTypes
 
 from ..serializer import *
 from .common import CustomPageNumberPagination
 
 
-@extend_schema(
-    description="Endpoint allowing retrieval, updating, and deletion of a category.",
-    request=CategorySerializer,
-    responses={200: CategorySerializer, 404: "category not found"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Catégories & Indicateurs'],
+        operation_id='categories_retrieve',
+        summary="Détail d'une catégorie",
+        description="Retourne une catégorie par son identifiant. Accès public.",
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant de la catégorie")],
+        request=None,
+        responses={200: CategorySerializer, 404: OpenApiResponse(description="Catégorie introuvable")},
+    ),
+    put=extend_schema(
+        tags=['Catégories & Indicateurs'],
+        operation_id='categories_update',
+        summary="Mettre à jour une catégorie",
+        description="Met à jour une catégorie existante. Accès public.",
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant de la catégorie")],
+        request=CategorySerializer,
+        responses={
+            200: CategorySerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            404: OpenApiResponse(description="Catégorie introuvable"),
+        },
+    ),
+    delete=extend_schema(
+        tags=['Catégories & Indicateurs'],
+        operation_id='categories_destroy',
+        summary="Supprimer une catégorie",
+        description="Supprime une catégorie. Refusé (400) si des incidents y sont rattachés. Accès public.",
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant de la catégorie")],
+        request=None,
+        responses={
+            204: OpenApiResponse(description="Catégorie supprimée"),
+            400: OpenApiResponse(description="Catégorie liée à des incidents (suppression refusée)"),
+            404: OpenApiResponse(description="Catégorie introuvable"),
+        },
+    ),
 )
 class CategoryAPIView(APIView):
     permission_classes = ()
@@ -55,10 +90,25 @@ class CategoryAPIView(APIView):
         except Category.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-@extend_schema(
-    description="Endpoint allowing retrieval and creating of category.",
-    request=CategorySerializer,
-    responses={201: CategorySerializer, 400: "serializer error"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Catégories & Indicateurs'],
+        operation_id='categories_list',
+        summary="Lister les catégories",
+        description="Retourne la liste paginée des catégories. Accès public.",
+        responses={
+            200: CategorySerializer(many=True),
+            500: OpenApiResponse(description="Erreur serveur"),
+        },
+    ),
+    post=extend_schema(
+        tags=['Catégories & Indicateurs'],
+        operation_id='categories_create',
+        summary="Créer une catégorie",
+        description="Crée une nouvelle catégorie. Accès public.",
+        request=CategorySerializer,
+        responses={201: CategorySerializer, 400: OpenApiResponse(description="Données invalides")},
+    ),
 )
 class CategoryAPIListView(generics.ListCreateAPIView):
     permission_classes = ()

@@ -8,16 +8,53 @@ from rest_framework import status, generics
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import (
+    extend_schema, extend_schema_view, OpenApiParameter, OpenApiResponse,
+    OpenApiExample, inline_serializer,
+)
+from drf_spectacular.types import OpenApiTypes
+from rest_framework import serializers
 
 from ..serializer import *
 from .common import CustomPageNumberPagination
 
 
-@extend_schema(
-    description="Endpoint allowing retrieval, updating, and deletion of a rapport.",
-    request=RapportSerializer,
-    responses={200: RapportSerializer, 404: "rapport not found"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Rapports'],
+        operation_id='rapports_retrieve',
+        summary="Détail d'un rapport",
+        description="Retourne un rapport par son identifiant. Accès public (aucune permission requise).",
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant du rapport")],
+        request=None,
+        responses={200: RapportSerializer, 404: OpenApiResponse(description="Rapport introuvable")},
+    ),
+    put=extend_schema(
+        tags=['Rapports'],
+        operation_id='rapports_update',
+        summary="Mettre à jour un rapport",
+        description="Met à jour partiellement un rapport. Si 'disponible' est vrai ou si un 'file' est fourni, le rapport est marqué disponible et un e-mail est envoyé au demandeur. Accès public.",
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant du rapport")],
+        request=RapportSerializer,
+        responses={
+            200: RapportSerializer,
+            400: OpenApiResponse(description="Données invalides"),
+            404: OpenApiResponse(description="Rapport introuvable"),
+        },
+    ),
+    delete=extend_schema(
+        tags=['Rapports'],
+        operation_id='rapports_destroy',
+        summary="Supprimer un rapport",
+        description="Supprime définitivement un rapport. Accès public (aucune permission requise).",
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant du rapport")],
+        request=None,
+        responses={
+            204: OpenApiResponse(description="Rapport supprimé"),
+            404: OpenApiResponse(description="Rapport introuvable"),
+        },
+    ),
+    post=extend_schema(exclude=True),
 )
 class RapportAPIView(generics.CreateAPIView):
     queryset = Rapport.objects.all()
@@ -76,10 +113,23 @@ class RapportAPIView(generics.CreateAPIView):
         item.delete()
         return Response(status=204)
 
-@extend_schema(
-    description="Endpoint allowing retrieval and creating of a rapport.",
-    request=RapportSerializer,
-    responses={201: RapportSerializer, 400: "Error"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Rapports'],
+        operation_id='rapports_list',
+        summary="Lister les rapports",
+        description="Retourne la liste paginée de tous les rapports (l'utilisateur demandeur est imbriqué). Accès public.",
+        request=None,
+        responses={200: RapportGetSerializer(many=True)},
+    ),
+    post=extend_schema(
+        tags=['Rapports'],
+        operation_id='rapports_create',
+        summary="Créer une commande de rapport",
+        description="Crée un rapport et notifie les administrateurs par e-mail. Accès public.",
+        request=RapportSerializer,
+        responses={201: RapportSerializer, 400: OpenApiResponse(description="Données invalides")},
+    ),
 )
 class RapportAPIListView(generics.CreateAPIView):
     queryset = Rapport.objects.all()
@@ -109,10 +159,17 @@ class RapportAPIListView(generics.CreateAPIView):
             return Response(serializer.data, status=201)
         return Response(serializer.errors, status=400)
 
-@extend_schema(
-    description="Endpoint allowing retrieval a rapport by user.",
-    request=RapportSerializer,
-    responses={200: RapportSerializer, 404: "rapport not found"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Rapports'],
+        operation_id='rapports_by_user',
+        summary="Rapports d'un utilisateur",
+        description="Retourne tous les rapports commandés par l'utilisateur donné. Accès public.",
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Identifiant de l'utilisateur demandeur")],
+        request=None,
+        responses={200: RapportGetSerializer(many=True)},
+    ),
+    post=extend_schema(exclude=True),
 )
 class RapportByUserAPIView(generics.CreateAPIView):
     permission_classes = (
@@ -128,10 +185,41 @@ class RapportByUserAPIView(generics.CreateAPIView):
         except Rapport.DoesNotExist:
             return Response(status=404)
 
-@extend_schema(
-    description="Endpoint allowing retrieval and creating a rapport on zone.",
-    request=RapportSerializer,
-    responses={200: RapportSerializer, 404: "rapport not found"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Rapports'],
+        operation_id='rapports_zone_list',
+        summary="Lister les rapports de zone",
+        description="Retourne la liste paginée des rapports de type 'zone'. Accès public.",
+        request=None,
+        responses={200: RapportGetSerializer(many=True)},
+    ),
+    post=extend_schema(
+        tags=['Rapports'],
+        operation_id='rapports_zone_create',
+        summary="Créer un rapport de zone",
+        description="Crée un rapport de type 'zone' et y rattache automatiquement tous les incidents de la zone, puis notifie les administrateurs. Requiert type='zone' et le champ 'zone'. Accès public.",
+        request=RapportSerializer,
+        responses={
+            200: inline_serializer(
+                name='RapportsZoneCreateResponse',
+                fields={
+                    'status': serializers.CharField(),
+                    'message': serializers.CharField(),
+                    'data': RapportSerializer(),
+                },
+            ),
+            400: OpenApiResponse(description="Données invalides"),
+            404: OpenApiResponse(description="type différent de 'zone' ou champ 'zone' manquant"),
+        },
+        examples=[
+            OpenApiExample(
+                'Rapport de zone',
+                value={'type': 'zone', 'zone': 'Bamako', 'details': 'Synthèse de la zone'},
+                request_only=True,
+            ),
+        ],
+    ),
 )
 class RapportOnZoneAPIView(generics.CreateAPIView):
     queryset = Rapport.objects.all()

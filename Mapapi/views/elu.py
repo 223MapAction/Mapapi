@@ -8,16 +8,43 @@ from rest_framework import status, generics
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import (
+    extend_schema,
+    extend_schema_view,
+    OpenApiParameter,
+    OpenApiResponse,
+    inline_serializer,
+)
+from drf_spectacular.types import OpenApiTypes
+from rest_framework import serializers
 
 from ..serializer import *
 from ..Send_mails import send_email
 from .common import CustomPageNumberPagination
 
 
-@extend_schema(
-    description="Endpoint allowing retrieval and creating of an elu.",
-    responses={201: UserEluSerializer, 400: "Serializer error"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Contacts & Élus'],
+        operation_id='elus_list',
+        summary="Lister les élus",
+        description="Renvoie la liste paginée des utilisateurs de type « élu ». Endpoint public.",
+        request=None,
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Présent dans l'URL mais non utilisé par la vue.")],
+        responses={200: UserSerializer(many=True)},
+    ),
+    post=extend_schema(
+        tags=['Contacts & Élus'],
+        operation_id='elus_create',
+        summary="Créer un élu",
+        description="Crée un utilisateur « élu », l'associe éventuellement à des zones (champ `zones`), génère un mot de passe aléatoire et envoie les identifiants par e-mail. Endpoint public.",
+        request=UserEluSerializer,
+        parameters=[OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH, description="Présent dans l'URL mais non utilisé par la vue.")],
+        responses={
+            201: UserEluSerializer,
+            400: OpenApiResponse(description="Erreurs de validation du sérialiseur."),
+        },
+    ),
 )
 class EluAPIListView(generics.CreateAPIView):
     permission_classes = (
@@ -61,10 +88,33 @@ class EluAPIListView(generics.CreateAPIView):
             return Response(UserEluSerializer(user).data, status=201)
         return Response(serializer.errors, status=400)
 
-@extend_schema(
-    description="Endpoint allowing creating of an elu by zone.",
-    request=UserEluSerializer,
-    responses={201: UserEluSerializer, 400: "serializer error"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Contacts & Élus'],
+        operation_id='elus_zones_list',
+        summary="Lister les attributions élu-zone",
+        description="Renvoie la liste des attributions élu↔zone. Endpoint public.",
+        request=None,
+        responses={
+            200: EluToZoneSerializer(many=True),
+            500: OpenApiResponse(description="Erreur serveur : {\"error\": \"...\"}."),
+        },
+    ),
+    post=extend_schema(
+        tags=['Contacts & Élus'],
+        operation_id='elus_assign_to_zone',
+        summary="Attribuer une zone à un élu",
+        description="Associe une zone à un élu à partir des identifiants `elu` et `zone` fournis dans le corps. Endpoint public.",
+        request=EluToZoneSerializer,
+        responses={
+            200: inline_serializer(
+                name='EluZoneAssignResponse',
+                fields={'status': serializers.CharField(), 'message': serializers.CharField()},
+            ),
+            400: OpenApiResponse(description="Erreurs de validation du sérialiseur."),
+            500: OpenApiResponse(description="Erreur serveur : {\"error\": \"...\"}."),
+        },
+    ),
 )
 class EluToZoneAPIListView(generics.ListCreateAPIView):
     permission_classes = ()

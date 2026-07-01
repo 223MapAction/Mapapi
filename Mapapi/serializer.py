@@ -8,37 +8,96 @@ from django.contrib.auth import authenticate
 from rest_framework.serializers import ModelSerializer
 from django.contrib.auth.hashers import make_password
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.types import OpenApiTypes
+import base64
+import uuid as _uuid
+from django.core.files.base import ContentFile
+
+
+class AvatarField(serializers.ImageField):
+    """Champ avatar tolérant : accepte un fichier multipart OU une data-URL base64
+    (le front lit le fichier en base64 via FileReader). Toute autre valeur (l'URL
+    existante renvoyée par le front quand l'avatar n'a pas changé, chaîne, vide) est
+    ignorée → l'avatar courant est conservé, plus de 400 « not a file »."""
+
+    def to_internal_value(self, data):
+        if hasattr(data, 'read'):  # fichier multipart classique
+            return super().to_internal_value(data)
+        if isinstance(data, str) and data.startswith('data:image'):
+            try:
+                header, b64 = data.split(';base64,', 1)
+                ext = (header.split('/')[-1] or 'png')[:5]
+                decoded = base64.b64decode(b64)
+                f = ContentFile(decoded, name=f"avatar_{_uuid.uuid4().hex[:10]}.{ext}")
+                return super().to_internal_value(f)
+            except Exception:
+                self.fail('invalid_image')
+        raise serializers.SkipField()  # rien de nouveau à enregistrer
 
 
 class OrganisationSerializer(serializers.ModelSerializer):
     members_count = serializers.SerializerMethodField(read_only=True)
+    incidents_taken_count = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Organisation
         fields = '__all__'
 
-    def get_members_count(self, obj):
+    def get_members_count(self, obj) -> int:
         return obj.members.count()
+
+    def get_incidents_taken_count(self, obj) -> int:
+        # Incidents « pris en compte » par l'org = incidents dont le leader (taken_by)
+        # est un membre de l'organisation. Exclut les incidents supprimés.
+        return Incident.objects.filter(
+            taken_by__organisation_member=obj, is_deleted=False
+        ).count()
 
 
 class OrganisationMemberSerializer(serializers.ModelSerializer):
     """Serializer pour la gestion des membres d'une organisation."""
     organisation_name = serializers.CharField(source='organisation_member.name', read_only=True)
+    # Rôle web canonique (cf. roles.py) — même source que partout ailleurs, pour
+    # qu'un objet user expose TOUJOURS le rôle de la même façon (pas de confusion
+    # org_role vs user_type côté frontend).
+    web_role = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'first_name', 'last_name', 'phone',
-            'organisation_member', 'organisation_name', 'org_role',
+            'id', 'email', 'first_name', 'last_name', 'phone', 'avatar',
+            'organisation_member', 'organisation_name', 'org_role', 'web_role',
             'agent_code', 'is_active', 'date_joined',
         ]
-        read_only_fields = ('id', 'email', 'date_joined', 'agent_code')
+        read_only_fields = ('id', 'email', 'date_joined', 'agent_code', 'avatar')
+
+    @extend_schema_field(serializers.ChoiceField(
+        choices=['super_admin', 'org_admin', 'bureau_agent', 'field_agent'],
+        allow_null=True,
+        help_text="Rôle canonique du dashboard : super_admin si is_superuser, "
+                  "sinon l'org_role (org_admin/bureau_agent/field_agent), sinon null. "
+                  "Distinct de user_type (catégorie de compte).",
+    ))
+    def get_web_role(self, obj) -> str | None:
+        from .roles import get_web_role
+        return get_web_role(obj)
+
+# Secrets d'authentification jamais exposés en lecture par l'API.
+# Ceux-ci sont EXCLUS de la sortie (ni lus ni écrits via ces serializers).
+SENSITIVE_USER_FIELDS = (
+    'otp', 'otp_expiration', 'verification_token', 'pin_code',
+)
+# password : accepté en entrée (création/MAJ via set_password) mais jamais renvoyé.
+PASSWORD_WRITE_ONLY = {'password': {'write_only': True}}
+
 
 class UserRegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = '__all__'
+        exclude = SENSITIVE_USER_FIELDS
         depth = 1
+        extra_kwargs = PASSWORD_WRITE_ONLY
 
     def create(self, validated_data):
         user = User(
@@ -55,6 +114,7 @@ class UserRegisterSerializer(serializers.ModelSerializer):
 
  
 class UserSerializer(ModelSerializer):
+    avatar = AvatarField(required=False)
     incident_preferences = serializers.ListField(
         child=serializers.CharField(),
         write_only=True,
@@ -63,10 +123,26 @@ class UserSerializer(ModelSerializer):
     organisation_name = serializers.CharField(
         source='organisation_member.name', read_only=True
     )
+    web_role = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = User
-        exclude = ('user_permissions', 'is_superuser', 'is_active', 'is_staff')
+        exclude = ('user_permissions', 'is_superuser', 'is_active', 'is_staff') \
+            + SENSITIVE_USER_FIELDS
+        # password reste accepté en entrée (create() appelle set_password) mais
+        # n'est jamais renvoyé.
+        extra_kwargs = PASSWORD_WRITE_ONLY
+
+    @extend_schema_field(serializers.ChoiceField(
+        choices=['super_admin', 'org_admin', 'bureau_agent', 'field_agent'],
+        allow_null=True,
+        help_text="Rôle canonique du dashboard : super_admin si is_superuser, "
+                  "sinon l'org_role (org_admin/bureau_agent/field_agent), sinon null. "
+                  "Distinct de user_type (catégorie de compte).",
+    ))
+    def get_web_role(self, obj) -> str | None:
+        from .roles import get_web_role
+        return get_web_role(obj)
 
     def create(self, validated_data):
         zones = validated_data.pop('zones', None)
@@ -102,9 +178,12 @@ class UserEluSerializer(serializers.ModelSerializer):
 
 
 class UserPutSerializer(serializers.ModelSerializer):
+    avatar = AvatarField(required=False)
+
     class Meta:
         model = User
-        fields = '__all__'
+        exclude = SENSITIVE_USER_FIELDS
+        extra_kwargs = PASSWORD_WRITE_ONLY
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -135,7 +214,90 @@ class CategorySerializer(ModelSerializer):
         fields = '__all__'
 
 
-class IncidentSerializer(ModelSerializer):
+class IncidentActingOrgsMixin(serializers.Serializer):
+    """Champs explicites partagés liste + détail (cf. services.incident_orgs) :
+    qui a pris l'incident en charge, et toutes les organisations actives dessus.
+    Permet à une autre organisation de voir, AVANT d'ouvrir l'incident, quelle(s)
+    organisation(s) agissent déjà."""
+    taken_by_organisation = serializers.SerializerMethodField(read_only=True)
+    taken_by_name = serializers.SerializerMethodField(read_only=True)
+    acting_organisations = serializers.SerializerMethodField(read_only=True)
+    my_collaboration = serializers.SerializerMethodField(read_only=True)
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_taken_by_organisation(self, obj):
+        from .services.incident_orgs import taken_by_organisation
+        return taken_by_organisation(obj)
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_my_collaboration(self, obj):
+        """Pour le viewer connecté : SA demande de collaboration sur cet incident
+        (ou celle de SON organisation), QUEL QUE SOIT le statut — notamment
+        ``pending``. Permet, dans la liste, de voir « j'ai demandé à collaborer,
+        en attente » sur un incident déjà pris en charge par une autre org.
+        Renvoie ``None`` si aucune demande (ou pas de viewer authentifié).
+        Calculé sur ``collaboration_set`` préchargé → pas de N+1 en liste."""
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if not user or not getattr(user, 'is_authenticated', False):
+            return None
+        org_id = getattr(user, 'organisation_member_id', None)
+        mine = []
+        for c in obj.collaboration_set.all():
+            cu = getattr(c, 'user', None)
+            if not cu:
+                continue
+            if org_id is not None:
+                if getattr(cu, 'organisation_member_id', None) == org_id:
+                    mine.append(c)
+            elif cu.id == user.id:
+                mine.append(c)
+        if not mine:
+            return None
+        # On garde la plus pertinente : accepted > pending > declined, puis récente.
+        rank = {'accepted': 0, 'pending': 1, 'declined': 2}
+        mine.sort(key=lambda c: (
+            rank.get(c.status, 9),
+            -(c.created_at.timestamp() if getattr(c, 'created_at', None) else 0),
+        ))
+        best = mine[0]
+        org = getattr(getattr(best, 'user', None), 'organisation_member', None)
+        return {
+            'id': best.id,
+            'status': best.status,
+            'role': best.role,
+            'created_at': best.created_at.isoformat() if getattr(best, 'created_at', None) else None,
+            'organisation_id': org.id if org else None,
+            'organisation_name': org.name if org else None,
+        }
+
+    def get_taken_by_name(self, obj) -> str | None:
+        tb = getattr(obj, 'taken_by', None)
+        if not tb:
+            return None
+        return f"{tb.first_name or ''} {tb.last_name or ''}".strip() or tb.email
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_acting_organisations(self, obj):
+        from .services.incident_orgs import acting_organisations
+        return acting_organisations(obj)
+
+
+class IncidentOrgAssignmentNestedSerializer(serializers.ModelSerializer):
+    """Lecture seule : assignations org exposées sur le détail d'un incident,
+    pour que le front affiche les actions accepter/refuser (spec §2/§3)."""
+    organisation_id = serializers.IntegerField(source='organisation.id', read_only=True)
+    organisation_name = serializers.CharField(source='organisation.name', read_only=True)
+
+    class Meta:
+        model = IncidentOrgAssignment
+        fields = ('id', 'organisation_id', 'organisation_name', 'status', 'deadline')
+        read_only_fields = fields
+
+
+class IncidentSerializer(IncidentActingOrgsMixin, ModelSerializer):
+    org_assignments = IncidentOrgAssignmentNestedSerializer(many=True, read_only=True)
+
     class Meta:
         model = Incident
         fields = '__all__'
@@ -173,9 +335,10 @@ class IncidentSerializer(ModelSerializer):
         return data
 
 
-class IncidentGetSerializer(ModelSerializer):
+class IncidentGetSerializer(IncidentActingOrgsMixin, ModelSerializer):
     user_id = UserSerializer()
     category_id = CategorySerializer()
+    org_assignments = IncidentOrgAssignmentNestedSerializer(many=True, read_only=True)
 
     class Meta:
         model = Incident
@@ -183,18 +346,22 @@ class IncidentGetSerializer(ModelSerializer):
 
 
 class IncidentMapSerializer(ModelSerializer):
-    """Serializer léger pour les marqueurs de la carte.
+    """Sérialiseur ultra-léger pour la carte du dashboard.
 
-    Ne charge aucune relation imbriquée (user, catégorie, assignments) afin
-    d'éviter les requêtes N+1. Uniquement les champs nécessaires à l'affichage
-    d'un marqueur et à son ouverture.
-    """
+    N'expose que les champs scalaires dont les marqueurs ont besoin. Il évite
+    volontairement le M2M `category_ids`, le nested `org_assignments` et les URLs
+    de fichiers (photo/video/audio) qui, via `IncidentSerializer(__all__)`,
+    déclenchaient un N+1 (~126 requêtes pour 59 incidents → ~12 s sur le pooler
+    Supabase distant). `taken_by` reste un PK (optimisation PK-only de DRF, pas de
+    requête supplémentaire), donc l'endpoint ne fait plus qu'UNE requête. Les
+    détails (photo, description, participants…) sont chargés à la demande via
+    `GET /incident/<id>` quand un marqueur est cliqué."""
+
     class Meta:
         model = Incident
         fields = (
-            'id', 'title', 'zone', 'lattitude', 'longitude',
-            'etat', 'category_id', 'created_at', 'progress',
-            'take_in_charge_mode',
+            'id', 'title', 'lattitude', 'longitude', 'etat', 'taken_by',
+            'is_deleted', 'severity', 'created_at',
         )
 
 
@@ -228,6 +395,23 @@ class RapportGetSerializer(ModelSerializer):
     class Meta:
         model = Rapport
         fields = '__all__'
+
+
+class IncidentReportSerializer(ModelSerializer):
+    """Rapport d'un agent vu depuis un incident (page Mes interventions / détail
+    collaboration). Expose explicitement l'auteur + son organisation."""
+    author = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = Rapport
+        fields = (
+            'id', 'details', 'type', 'statut', 'date_livraison', 'disponible',
+            'file', 'created_at', 'incident', 'author',
+        )
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_author(self, obj):
+        return _person_brief(obj.user_id)
 
 
 class ParticipateSerializer(ModelSerializer):
@@ -360,60 +544,71 @@ class PredictionSerializer(serializers.ModelSerializer):
             'error_message', 'created_at', 'updated_at',
         )
 
-class OtherCollaboratorSerializer(serializers.ModelSerializer):
-    organisation_name = serializers.CharField(
-        source='user.organisation_member.name', read_only=True, default=None
-    )
-    organisation_id = serializers.IntegerField(
-        source='user.organisation_member_id', read_only=True, default=None
-    )
-    user_full_name = serializers.SerializerMethodField()
-    user_email = serializers.EmailField(source='user.email', read_only=True)
-
-    class Meta:
-        model = Collaboration
-        fields = (
-            'id', 'user', 'user_full_name', 'user_email',
-            'organisation_id', 'organisation_name', 'role', 'status', 'end_date'
-        )
-
-    def get_user_full_name(self, obj):
-        if obj.user:
-            return f"{obj.user.first_name or ''} {obj.user.last_name or ''}".strip() or obj.user.email
+def _person_brief(user):
+    """Représentation explicite et minimale d'une personne + son organisation."""
+    if not user:
         return None
+    org = getattr(user, 'organisation_member', None)
+    return {
+        'id': user.id,
+        'name': f"{user.first_name or ''} {user.last_name or ''}".strip() or user.email,
+        'email': user.email,
+        'organisation_id': org.id if org else None,
+        'organisation_name': org.name if org else (getattr(user, 'organisation', None) or None),
+    }
 
-class CollaborationSerializer(ModelSerializer):
+
+class CollaborationPartiesMixin(serializers.Serializer):
+    """Expose EXPLICITEMENT l'émetteur et le récepteur d'une demande de
+    collaboration, pour lever la confusion côté frontend (#8) :
+    - sender (émetteur)  = l'organisation qui DEMANDE à rejoindre (collaboration.user)
+    - receiver (récepteur) = le leader qui REÇOIT la demande (incident.taken_by)
+    """
+    sender = serializers.SerializerMethodField(read_only=True)
+    receiver = serializers.SerializerMethodField(read_only=True)
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_sender(self, obj):
+        return _person_brief(getattr(obj, 'user', None))
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_receiver(self, obj):
+        incident = getattr(obj, 'incident', None)
+        return _person_brief(getattr(incident, 'taken_by', None)) if incident else None
+
+
+class CollaborationSerializer(CollaborationPartiesMixin, ModelSerializer):
     # Nom de l'organisation du collaborateur (lecture seule)
     organisation_name = serializers.CharField(
         source='user.organisation_member.name', read_only=True, default=None
     )
-    organisation_id = serializers.IntegerField(
+    organisation_id = serializers.UUIDField(
         source='user.organisation_member_id', read_only=True, default=None
     )
     user_full_name = serializers.SerializerMethodField()
     user_email = serializers.EmailField(source='user.email', read_only=True)
     incident_title = serializers.CharField(source='incident.title', read_only=True)
+    # Raccourcis photo/miniature (en plus de incident_details) pour les cartes.
+    incident_photo = serializers.ImageField(source='incident.photo', read_only=True)
+    incident_thumbnail = serializers.ImageField(source='incident.thumbnail', read_only=True)
     incident_details = IncidentSerializer(source='incident', read_only=True)
     prediction_details = PredictionSerializer(source='incident.prediction', read_only=True)
-    other_collaborators = serializers.SerializerMethodField()
 
     class Meta:
         model = Collaboration
         fields = '__all__'
-        # 'status' et 'role' ne sont PAS settables librement par le demandeur :
+        # 'status', 'user' et 'role'(leader) ne sont PAS settables librement par le demandeur :
+        # - user = l'émetteur, TOUJOURS forcé à request.user dans la vue (le client
+        #   n'envoie rien ; évite le 400 "Invalid pk" quand le FE postait un mauvais id)
         # - status est géré par le leader via les endpoints accept/decline
         # - role = 'leader' est auto-attribué quand une organisation prend l'incident ;
         #   une demande manuelle ne peut proposer que contributor/observer
-        read_only_fields = ('status',)
+        read_only_fields = ('status', 'user')
 
-    def get_user_full_name(self, obj):
+    def get_user_full_name(self, obj) -> str | None:
         if obj.user:
             return f"{obj.user.first_name or ''} {obj.user.last_name or ''}".strip() or obj.user.email
         return None
-
-    def get_other_collaborators(self, obj):
-        qs = Collaboration.objects.filter(incident=obj.incident).exclude(id=obj.id).select_related('user', 'user__organisation_member')
-        return OtherCollaboratorSerializer(qs, many=True).data
 
     def validate_role(self, value):
         """Un utilisateur ne peut pas se déclarer leader lui-même.
@@ -442,7 +637,7 @@ class CollaborationSerializer(ModelSerializer):
         return data
 
 
-class CollaborationEnrichedSerializer(ModelSerializer):
+class CollaborationEnrichedSerializer(CollaborationPartiesMixin, ModelSerializer):
     """Serializer enrichi pour la vue collaboration dashboard."""
     organisation_name = serializers.SerializerMethodField()
     user_role = serializers.CharField(source='role', read_only=True)
@@ -451,6 +646,9 @@ class CollaborationEnrichedSerializer(ModelSerializer):
     incident_zone = serializers.CharField(source='incident.zone', read_only=True)
     incident_etat = serializers.CharField(source='incident.etat', read_only=True)
     incident_progress = serializers.IntegerField(source='incident.progress', read_only=True)
+    # Photo (+ miniature) de l'incident pour les cartes « Mes collaborations ».
+    incident_photo = serializers.ImageField(source='incident.photo', read_only=True)
+    incident_thumbnail = serializers.ImageField(source='incident.thumbnail', read_only=True)
     start_date = serializers.DateTimeField(source='created_at', read_only=True)
     participants_count = serializers.SerializerMethodField()
 
@@ -458,19 +656,20 @@ class CollaborationEnrichedSerializer(ModelSerializer):
         model = Collaboration
         fields = [
             'id', 'incident', 'user', 'status', 'role',
-            'organisation_name', 'user_role',
+            'organisation_name', 'user_role', 'sender', 'receiver',
             'incident_title', 'incident_description', 'incident_zone',
             'incident_etat', 'incident_progress',
+            'incident_photo', 'incident_thumbnail',
             'start_date', 'end_date',
             'participants_count', 'motivation',
         ]
 
-    def get_organisation_name(self, obj):
+    def get_organisation_name(self, obj) -> str | None:
         if obj.user and obj.user.organisation_member:
             return obj.user.organisation_member.name
         return obj.user.organisation if obj.user else None
 
-    def get_participants_count(self, obj):
+    def get_participants_count(self, obj) -> int:
         return Collaboration.objects.filter(
             incident=obj.incident, status='accepted'
         ).count()
@@ -482,9 +681,22 @@ class ColaborationSerializer(serializers.ModelSerializer):
 
 
 class NotificationSerializer(serializers.ModelSerializer):
+    link = serializers.SerializerMethodField(read_only=True)
+    # `type` = catégorie (collaboration_request, incident_assignment, …) pour le
+    # front (icône/logique) ; `title` = libellé FR prêt à afficher (plus de titre en
+    # dur côté front). cf. incident_title pour le titre de l'incident concerné.
+    type = serializers.CharField(source='notif_type', read_only=True)
+    title = serializers.CharField(read_only=True)
+    incident_title = serializers.CharField(source='incident.title', read_only=True, default=None)
+
     class Meta:
         model = Notification
         fields = '__all__'
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_link(self, obj):
+        # Cible de redirection au clic ({type, incident_id, [collaboration_id], url}) ou null.
+        return obj.redirect_link()
 
 
 class ChatHistorySerializer(serializers.ModelSerializer):
@@ -497,6 +709,33 @@ class UserActionSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserAction
         fields = '__all__'
+
+
+class ActivityFeedSerializer(serializers.ModelSerializer):
+    """Élément du flux d'activité : action + acteur + organisation + horodatage précis."""
+    user_name = serializers.SerializerMethodField(read_only=True)
+    organisation_name = serializers.SerializerMethodField(read_only=True)
+    # `actor` = ce qu'on AFFICHE en tête de l'élément : le nom de l'ORGANISATION
+    # (l'activité est au niveau org), avec repli sur le nom de la personne si elle
+    # n'a pas d'organisation (ex. super admin). À utiliser à la place de `user_name`.
+    actor = serializers.SerializerMethodField(read_only=True)
+
+    class Meta:
+        model = UserAction
+        fields = ['id', 'action', 'timeStamp', 'created_at', 'user', 'user_name', 'organisation_name', 'actor']
+
+    def get_user_name(self, obj) -> str | None:
+        u = obj.user
+        if not u:
+            return None
+        return (f"{u.first_name or ''} {u.last_name or ''}".strip()) or u.email
+
+    def get_organisation_name(self, obj) -> str | None:
+        u = obj.user
+        return getattr(getattr(u, 'organisation_member', None), 'name', None) if u else None
+
+    def get_actor(self, obj) -> str | None:
+        return self.get_organisation_name(obj) or self.get_user_name(obj)
 
 
 class IncidentAssignmentSerializer(serializers.ModelSerializer):
@@ -514,6 +753,7 @@ class IncidentAssignmentSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ('assigned_by', 'created_at', 'updated_at')
 
+    @extend_schema_field(IncidentGetSerializer)
     def get_incident_detail(self, obj):
         if not obj.incident:
             return None
@@ -541,6 +781,22 @@ class IncidentAssignmentSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("L'agent doit appartenir à l'organisation liée à l'incident.")
 
         return data
+
+
+class IncidentOrgAssignmentSerializer(serializers.ModelSerializer):
+    """Assignation d'un incident à une organisation par le Super Admin (spec §2/§3)."""
+    organisation_name = serializers.CharField(source='organisation.name', read_only=True)
+    incident_title = serializers.CharField(source='incident.title', read_only=True)
+    assigned_by_name = serializers.CharField(source='assigned_by.get_full_name', read_only=True)
+    assigned_by_email = serializers.EmailField(source='assigned_by.email', read_only=True)
+
+    class Meta:
+        model = IncidentOrgAssignment
+        fields = '__all__'
+        read_only_fields = (
+            'status', 'decline_reason', 'deadline', 'assigned_by',
+            'created_at', 'responded_at',
+        )
 
 
 class FieldReportSerializer(ModelSerializer):
@@ -619,19 +875,14 @@ class DiscussionMessageSerializer(serializers.ModelSerializer):
 
 
 class IncidentTaskSerializer(serializers.ModelSerializer):
-    created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
-    created_by_organisation = serializers.CharField(
-        source='created_by.organisation_member.name', read_only=True, default=None
-    )
-    created_by_organisation_id = serializers.IntegerField(
-        source='created_by.organisation_member.id', read_only=True, default=None
-    )
-    assigned_to_name = serializers.CharField(source='assigned_to.get_full_name', read_only=True, default=None)
-
     class Meta:
         model = IncidentTask
         fields = '__all__'
-        read_only_fields = ('created_by', 'created_at', 'updated_at', 'is_confirmed')
+        # `incident` est TOUJOURS injecté depuis l'URL par la vue
+        # (perform_create → serializer.save(incident=...)). Il ne doit donc pas être
+        # exigé/envoyé dans le corps (sinon is_valid() échoue « This field may not be
+        # null »). `created_by` est de même posé par la vue.
+        read_only_fields = ('incident', 'created_by', 'created_at', 'updated_at', 'is_confirmed')
 
     def validate(self, data):
         # Refus d'ajouter/modifier une tâche sur un incident clôturé
@@ -692,17 +943,25 @@ class PartnerSuggestionSerializer(serializers.ModelSerializer):
             'suggested_partner': {'required': False},
         }
 
-    def get_suggested_by_name(self, obj):
+    def get_suggested_by_name(self, obj) -> str | None:
         u = obj.suggested_by
         if not u:
             return None
         return f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email
 
-    def get_suggested_partner_name(self, obj):
+    def get_suggested_partner_name(self, obj) -> str | None:
         u = obj.suggested_partner
         if not u:
             return None
         return f"{u.first_name or ''} {u.last_name or ''}".strip() or u.email
+
+    def get_unique_together_validators(self):
+        # Le modèle a unique_together (incident, suggested_partner). DRF en déduit
+        # un UniqueTogetherValidator qui FORCE suggested_partner requis dans l'input
+        # (enforce_required_fields), ce qui casse le chemin suggested_organisation
+        # (où le partenaire n'est résolu qu'au moment du validate()). On désactive
+        # ce validateur auto et on contrôle l'unicité manuellement dans validate().
+        return []
 
     def validate(self, data):
         incident = data.get('incident') or getattr(self.instance, 'incident', None)
@@ -750,107 +1009,17 @@ class PartnerSuggestionSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     "Cette organisation collabore déjà sur l'incident."
                 )
+            # unicité (incident, suggested_partner) gérée manuellement puisque le
+            # validateur auto a été désactivé ci-dessus (get_unique_together_validators).
+            dup_qs = PartnerSuggestion.objects.filter(
+                incident=incident, suggested_partner=suggested_partner
+            )
+            if self.instance is not None:
+                dup_qs = dup_qs.exclude(pk=self.instance.pk)
+            if dup_qs.exists():
+                raise serializers.ValidationError(
+                    "Cette organisation a déjà été invitée ou suggérée pour cet incident."
+                )
         return data
 
 
-class IncidentTaskResolvedSerializer(serializers.ModelSerializer):
-    """Tâche enrichie avec les infos de l'organisation qui l'a créée."""
-    organisation_name = serializers.CharField(
-        source='created_by.organisation_member.name', read_only=True, default=None
-    )
-    organisation_id = serializers.IntegerField(
-        source='created_by.organisation_member.id', read_only=True, default=None
-    )
-    assigned_to_name = serializers.CharField(
-        source='assigned_to.get_full_name', read_only=True, default=None
-    )
-    created_by_name = serializers.CharField(
-        source='created_by.get_full_name', read_only=True
-    )
-
-    class Meta:
-        model = IncidentTask
-        fields = [
-            'id', 'title', 'description',
-            'start_date', 'end_date', 'state',
-            'is_confirmed', 'proof_image', 'proof_video', 'failure_reason',
-            'organisation_id', 'organisation_name',
-            'assigned_to', 'assigned_to_name',
-            'created_by', 'created_by_name',
-            'created_at', 'updated_at',
-        ]
-
-
-class IncidentResolvedSerializer(serializers.ModelSerializer):
-    """
-    Sérialiseur complet pour les incidents résolus.
-    - prediction : données d'analyse complètes
-    - organisations : liste des organisations impliquées (via Collaboration acceptée)
-    - tasks_by_organisation : tâches regroupées par organisation
-    """
-    prediction = PredictionSerializer(read_only=True)
-    category_name = serializers.CharField(source='category_id.name', read_only=True, default=None)
-    reporter_name = serializers.CharField(source='user_id.get_full_name', read_only=True, default=None)
-    reporter_email = serializers.EmailField(source='user_id.email', read_only=True, default=None)
-    taken_by_name = serializers.CharField(source='taken_by.get_full_name', read_only=True, default=None)
-    taken_by_organisation = serializers.CharField(
-        source='taken_by.organisation_member.name', read_only=True, default=None
-    )
-    organisations = serializers.SerializerMethodField()
-    tasks_by_organisation = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Incident
-        fields = [
-            'id', 'title', 'description', 'zone', 'lattitude', 'longitude',
-            'etat', 'take_in_charge_mode', 'progress',
-            'created_at', 'resolution_end_date',
-            'category_id', 'category_name',
-            'reporter_name', 'reporter_email',
-            'taken_by', 'taken_by_name', 'taken_by_organisation',
-            'prediction',
-            'organisations',
-            'tasks_by_organisation',
-        ]
-
-    def get_organisations(self, obj):
-        """Retourne la liste de toutes les organisations impliquées (Collaborations acceptées)."""
-        collabs = obj.collaboration_set.filter(status='accepted').select_related(
-            'user__organisation_member'
-        )
-        result = []
-        seen_org_ids = set()
-        for c in collabs:
-            org = getattr(c.user, 'organisation_member', None)
-            if org and org.id not in seen_org_ids:
-                seen_org_ids.add(org.id)
-                result.append({
-                    'id': org.id,
-                    'name': org.name,
-                    'role': c.role,
-                })
-        return result
-
-    def get_tasks_by_organisation(self, obj):
-        """Retourne les tâches de l'incident regroupées par organisation."""
-        tasks = obj.tasks.select_related(
-            'created_by__organisation_member', 'assigned_to'
-        ).all()
-
-        grouped = {}
-        for task in tasks:
-            org = getattr(task.created_by, 'organisation_member', None)
-            org_key = org.id if org else 'sans_organisation'
-            org_name = org.name if org else 'Sans organisation'
-
-            if org_key not in grouped:
-                grouped[org_key] = {
-                    'organisation_id': org.id if org else None,
-                    'organisation_name': org_name,
-                    'tasks': [],
-                }
-            grouped[org_key]['tasks'].append(
-                IncidentTaskResolvedSerializer(task).data
-            )
-
-        return list(grouped.values())

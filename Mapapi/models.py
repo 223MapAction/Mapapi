@@ -27,6 +27,27 @@ DECLARED = 'declared'
 RESOLVED = 'resolved'
 IN_PROGRESS = "in_progress"
 TAKEN = "taken_into_account"
+# --- Phase 4 : nouveaux états du flux de résolution (additifs, non destructifs) ---
+RESOLUTION_PREPARED = 'resolution_prepared'   # Résolution préparée (attente Admin)
+IN_VALIDATION = 'in_validation'               # Résolu (en validation)
+RESOLVED_DEFINITIVE = 'resolved_definitive'   # Résolu (définitif)
+
+# --- Anti-gel (spec T3 / §5) : sévérité catégorielle de l'incident ---
+# Pilote le délai d'échec de prise en compte : Élevée 30 j / Moyenne 60 j / Faible 90 j.
+SEVERITY_HIGH = 'high'
+SEVERITY_MEDIUM = 'medium'
+SEVERITY_LOW = 'low'
+SEVERITY_CHOICES = (
+    (SEVERITY_HIGH, "Élevée"),
+    (SEVERITY_MEDIUM, "Moyenne"),
+    (SEVERITY_LOW, "Faible"),
+)
+# Mapping sévérité -> délai anti-gel en jours (None => fallback ANTI_GEL_DEFAULT_DAYS).
+ANTI_GEL_DEADLINE_DAYS = {
+    SEVERITY_HIGH: 30,
+    SEVERITY_MEDIUM: 60,
+    SEVERITY_LOW: 90,
+}
 
 USER_TYPES = (
     (ADMIN, ADMIN),
@@ -41,7 +62,11 @@ ETAT_INCIDENT = (
     (DECLARED, DECLARED),
     (RESOLVED, RESOLVED),
     (IN_PROGRESS, IN_PROGRESS),
-    (TAKEN, TAKEN)
+    (TAKEN, TAKEN),
+    # --- Phase 4 : nouveaux états du flux de résolution ---
+    (RESOLUTION_PREPARED, "Résolution préparée (attente Admin)"),
+    (IN_VALIDATION, "Résolu (en validation)"),
+    (RESOLVED_DEFINITIVE, "Résolu (définitif)"),
 )
 ETAT_RAPPORT = (
     ("new", "new"),
@@ -71,6 +96,24 @@ TASK_STATES = (
     (TASK_FAILED, TASK_FAILED),
 )
 
+# --- Collaboration statuses (cf. spec §5 : En attente → Active → Terminée / Refusée) ---
+# Valeurs historiques conservées (pending/accepted/declined). Ajout des états
+# terminaux 'terminated' (Terminée) et 'refused' (Refusée). Choices uniquement :
+# le champ status est un CharField sans `choices=` au niveau modèle, donc aucune
+# migration n'est requise.
+COLLAB_STATUS_PENDING = 'pending'
+COLLAB_STATUS_ACCEPTED = 'accepted'
+COLLAB_STATUS_DECLINED = 'declined'
+COLLAB_STATUS_TERMINATED = 'terminated'
+COLLAB_STATUS_REFUSED = 'refused'
+COLLAB_STATUSES = (
+    (COLLAB_STATUS_PENDING, 'En attente'),
+    (COLLAB_STATUS_ACCEPTED, 'Active'),
+    (COLLAB_STATUS_DECLINED, 'Refusée'),
+    (COLLAB_STATUS_TERMINATED, 'Terminée'),
+    (COLLAB_STATUS_REFUSED, 'Refusée'),
+)
+
 SUGGESTION_PENDING = 'pending'
 SUGGESTION_ACCEPTED = 'accepted'
 SUGGESTION_REJECTED = 'rejected'
@@ -98,32 +141,58 @@ ORG_ROLES = (
     (ORG_ROLE_FIELD, 'Agent de terrain'),
 )
 
-ORG_SECTOR_HUMANITARIAN = 'humanitarian'
-ORG_SECTOR_HUMANITARIAN_COORDINATION = 'humanitarian_coordination'
-ORG_SECTOR_DEVELOPMENT = 'development'
-ORG_SECTOR_CHILD_PROTECTION = 'child_protection'
+# --- Secteurs d'activité d'une organisation (valeur stockée → libellé FR) ---
+ORG_SECTOR_ENVIRONMENT = 'environment'
+ORG_SECTOR_SANITATION = 'sanitation'
+ORG_SECTOR_WATER_WASH = 'water_wash'
 ORG_SECTOR_HEALTH = 'health'
-ORG_SECTOR_NUTRITION_FOOD_SECURITY = 'nutrition_food_security'
-ORG_SECTOR_DEVELOPMENT_HUMANITARIAN = 'development_humanitarian'
+ORG_SECTOR_FOOD_SECURITY = 'food_security'
+ORG_SECTOR_PROTECTION = 'protection'
+ORG_SECTOR_HUMANITARIAN = 'humanitarian'
+ORG_SECTOR_DEVELOPMENT = 'development'
+ORG_SECTOR_GOVERNANCE = 'governance'
+ORG_SECTOR_EDUCATION = 'education'
+ORG_SECTOR_TECHNOLOGY_DATA = 'technology_data'
+ORG_SECTOR_MULTISECTOR = 'multisector'
+ORG_SECTOR_OTHER = 'other'
 ORG_ACTIVITY_SECTORS = (
-    (ORG_SECTOR_HUMANITARIAN, 'Humanitaire'),
-    (ORG_SECTOR_HUMANITARIAN_COORDINATION, 'Coordination humanitaire'),
-    (ORG_SECTOR_DEVELOPMENT, 'Développement'),
-    (ORG_SECTOR_CHILD_PROTECTION, "Protection de l'enfance"),
+    (ORG_SECTOR_ENVIRONMENT, 'Environnement'),
+    (ORG_SECTOR_SANITATION, 'Assainissement'),
+    (ORG_SECTOR_WATER_WASH, 'Eau / WASH'),
     (ORG_SECTOR_HEALTH, 'Santé'),
-    (ORG_SECTOR_NUTRITION_FOOD_SECURITY, 'Nutrition et sécurité alimentaire'),
-    (ORG_SECTOR_DEVELOPMENT_HUMANITARIAN, 'Développement et humanitaire'),
+    (ORG_SECTOR_FOOD_SECURITY, 'Sécurité alimentaire'),
+    (ORG_SECTOR_PROTECTION, 'Protection'),
+    (ORG_SECTOR_HUMANITARIAN, 'Humanitaire'),
+    (ORG_SECTOR_DEVELOPMENT, 'Développement'),
+    (ORG_SECTOR_GOVERNANCE, 'Gouvernance'),
+    (ORG_SECTOR_EDUCATION, 'Éducation'),
+    (ORG_SECTOR_TECHNOLOGY_DATA, 'Technologie / Données'),
+    (ORG_SECTOR_MULTISECTOR, 'Multisectoriel'),
+    (ORG_SECTOR_OTHER, 'Autre'),
 )
 
+# --- Types d'organisation (valeur stockée → libellé FR) ---
 ORG_TYPE_NGO = 'ngo'
 ORG_TYPE_INTERNATIONAL = 'international_organisation'
-ORG_TYPE_GOVERNMENTAL = 'governmental'
-ORG_TYPE_CIVIL_SOCIETY = 'civil_society'
+ORG_TYPE_UN_AGENCY = 'un_agency'
+ORG_TYPE_PUBLIC_INSTITUTION = 'public_institution'
+ORG_TYPE_LOCAL_AUTHORITY = 'local_authority'
+ORG_TYPE_ASSOCIATION_CSO = 'association_cso'
+ORG_TYPE_PRIVATE_SECTOR = 'private_sector'
+ORG_TYPE_PROJECT_PROGRAM = 'project_program'
+ORG_TYPE_COMMUNITY_STRUCTURE = 'community_structure'
+ORG_TYPE_OTHER = 'other'
 ORG_TYPES = (
     (ORG_TYPE_NGO, 'ONG'),
     (ORG_TYPE_INTERNATIONAL, 'Organisation internationale'),
-    (ORG_TYPE_GOVERNMENTAL, 'Gouvernementale'),
-    (ORG_TYPE_CIVIL_SOCIETY, 'Société civile'),
+    (ORG_TYPE_UN_AGENCY, 'Agence UN'),
+    (ORG_TYPE_PUBLIC_INSTITUTION, 'Institution publique'),
+    (ORG_TYPE_LOCAL_AUTHORITY, 'Collectivité territoriale'),
+    (ORG_TYPE_ASSOCIATION_CSO, 'Association / OSC'),
+    (ORG_TYPE_PRIVATE_SECTOR, 'Secteur privé'),
+    (ORG_TYPE_PROJECT_PROGRAM, 'Projet / Programme'),
+    (ORG_TYPE_COMMUNITY_STRUCTURE, 'Structure communautaire'),
+    (ORG_TYPE_OTHER, 'Autre'),
 )
 
 COUNTRY_SENEGAL = 'senegal'
@@ -134,8 +203,8 @@ COUNTRY_NIGER = 'niger'
 COUNTRY_COTE_DIVOIRE = 'cote_divoire'
 COUNTRY_MAURITANIA = 'mauritania'
 INTERVENTION_COUNTRIES = (
-    (COUNTRY_MALI, 'Mali'),
     (COUNTRY_SENEGAL, 'Sénégal'),
+    (COUNTRY_MALI, 'Mali'),
     (COUNTRY_GUINEA, 'Guinée'),
     (COUNTRY_BURKINA_FASO, 'Burkina Faso'),
     (COUNTRY_NIGER, 'Niger'),
@@ -161,9 +230,30 @@ ASSIGNMENT_STATUSES = (
     (ASSIGNMENT_CANCELLED, 'Annulé'),
 )
 
+# Phase 4 — assignation d'un incident à une ORGANISATION par le Super Admin
+# (spec §2/§3, T5 : jamais directement à un agent). L'Admin de l'organisation
+# cible accepte/décline sous 72 h, sinon acceptation tacite (D4).
+ORG_ASSIGNMENT_PENDING = 'pending'
+ORG_ASSIGNMENT_ACCEPTED = 'accepted'
+ORG_ASSIGNMENT_DECLINED = 'declined'
+ORG_ASSIGNMENT_STATUSES = (
+    (ORG_ASSIGNMENT_PENDING, 'En attente'),
+    (ORG_ASSIGNMENT_ACCEPTED, 'Acceptée'),
+    (ORG_ASSIGNMENT_DECLINED, 'Déclinée'),
+)
+
+
+class UUIDModel(models.Model):
+    """Base abstraite : clé primaire UUID (au lieu d'un entier auto-incrémenté)
+    pour éviter l'énumération/devinette des identifiants (faille IDOR)."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    class Meta:
+        abstract = True
+
 
 # Modèle d'organisation pour gérer les organisations liées aux utilisateurs
-class Organisation(models.Model):
+class Organisation(UUIDModel):
     name = models.CharField(max_length=255, unique=True)
     acronym = models.CharField(max_length=50, blank=True, null=True)
     is_premium = models.BooleanField(default=False)
@@ -271,6 +361,8 @@ class UserManager(BaseUserManager):
 
 
 class User(AbstractBaseUser, PermissionsMixin):
+    # Clé primaire UUID (cf. UUIDModel ; User n'en hérite pas car AbstractBaseUser).
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     groups = models.ManyToManyField(
         Group,
         related_name="mapapi_user_groups",
@@ -422,7 +514,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         return check_password(pin, self.pin_code)
 
 
-class FieldReport(models.Model):
+class FieldReport(UUIDModel):
     """Rapport de déplacement d'un agent de terrain sur le lieu d'un incident."""
     agent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='field_reports')
     incident = models.ForeignKey('Incident', on_delete=models.CASCADE, related_name='field_reports')
@@ -448,7 +540,7 @@ class FieldReport(models.Model):
         ordering = ('-visited_at',)
 
 
-class IncidentAssignment(models.Model):
+class IncidentAssignment(UUIDModel):
     incident = models.ForeignKey('Incident', on_delete=models.CASCADE, related_name='assignments')
     agent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='incident_assignments')
     assigned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_incident_assignments')
@@ -464,17 +556,54 @@ class IncidentAssignment(models.Model):
     def __str__(self):
         return f"{self.incident} assigné à {self.agent} avant {self.deadline:%d/%m/%Y %H:%M}"
 
-class Incident(models.Model):
+
+class IncidentOrgAssignment(UUIDModel):
+    """Assignation d'un incident à une ORGANISATION par le Super Admin (spec §2/§3, T5).
+
+    Distinct du modèle AGENT-centrique `IncidentAssignment` : ici la cible est
+    une organisation, jamais un agent. L'Admin de l'organisation cible accepte
+    ou décline sous 72 h ; sans réponse, acceptation tacite (D4). À l'acceptation,
+    l'organisation engage l'incident (« Pris en compte »).
+    """
+    incident = models.ForeignKey(
+        'Incident', on_delete=models.CASCADE, related_name='org_assignments'
+    )
+    organisation = models.ForeignKey(Organisation, on_delete=models.CASCADE)
+    assigned_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='created_org_assignments'
+    )
+    status = models.CharField(
+        max_length=20, choices=ORG_ASSIGNMENT_STATUSES, default=ORG_ASSIGNMENT_PENDING
+    )
+    decline_reason = models.TextField(null=True, blank=True)
+    deadline = models.DateTimeField(help_text="Échéance d'acceptation (now + 72 h).")
+    created_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return f"Incident {self.incident_id} → orga {self.organisation_id} ({self.status})"
+
+
+class Incident(UUIDModel):
     title = models.CharField(max_length=250, blank=True,
                              null=True)
     zone = models.CharField(max_length=250, blank=False,
                             null=False)
     description = models.TextField(max_length=500, blank=True, null=True)
-    photo = models.ImageField(upload_to='incidents/', 
-                        storage=ImageStorage(), 
+    photo = models.ImageField(upload_to='incidents/',
+                        storage=ImageStorage(),
                         null=True, blank=True)
-    video = models.FileField(upload_to='incidents/', 
-                        storage=VideoStorage(), 
+    # Miniature générée automatiquement à partir de `photo` (cf. save()) pour
+    # alléger le chargement de l'onglet incidents. Lecture seule côté API.
+    thumbnail = models.ImageField(upload_to='incidents/thumbnails/',
+                        storage=ImageStorage(),
+                        null=True, blank=True)
+    video = models.FileField(upload_to='incidents/',
+                        storage=VideoStorage(),
                         blank=True, null=True)
     audio = models.FileField(upload_to='incidents/', 
                         storage=VoiceStorage(), 
@@ -486,7 +615,7 @@ class Incident(models.Model):
     longitude = models.CharField(max_length=250, blank=True,
                                  null=True)
     etat = models.CharField(
-        max_length=255, choices=ETAT_INCIDENT, blank=False, null=False, default=DECLARED, db_index=True)
+        max_length=255, choices=ETAT_INCIDENT, blank=False, null=False, default=DECLARED)
     category_id = models.ForeignKey('Category', db_column='categ_incid_id', related_name='user_category',
                                     on_delete=models.CASCADE, null=True)
     indicateur_id = models.ForeignKey('Indicateur', db_column='indic_incid_id', related_name='user_indicateur',
@@ -494,7 +623,7 @@ class Incident(models.Model):
     slug = models.CharField(max_length=250, blank=True,
                             null=True)
     category_ids = models.ManyToManyField('Category', blank=True)
-    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
     taken_by = models.ForeignKey(User, related_name='taken_incidents', null=True, blank=True, on_delete=models.SET_NULL)
     # Mode de prise en charge : 'internal' (org seule en interne) ou 'collaborative' (ouvert aux autres orgs)
     TAKE_IN_CHARGE_MODES = (
@@ -502,7 +631,7 @@ class Incident(models.Model):
         ('collaborative', 'Collaborative (ouvert aux autres organisations)'),
     )
     take_in_charge_mode = models.CharField(
-        max_length=20, choices=TAKE_IN_CHARGE_MODES, null=True, blank=True, db_index=True,
+        max_length=20, choices=TAKE_IN_CHARGE_MODES, null=True, blank=True,
         help_text="Mode de prise en charge choisi par la première organisation."
     )
     # --- Spec : suivi résolution incident ---
@@ -512,13 +641,90 @@ class Incident(models.Model):
                                            help_text="Date de fin de la résolution. Obligatoire à la clôture.")
     progress = models.PositiveSmallIntegerField(default=0,
                                                 help_text="Progression auto-calculée (0-100) selon avancement des tâches.")
-    is_public = models.BooleanField(default=True, db_index=True,
+    is_public = models.BooleanField(default=True,
                                      help_text="Si False, l'incident n'est visible que par l'organisation de l'agent.")
-    is_deleted = models.BooleanField(default=False, db_index=True,
+    is_deleted = models.BooleanField(default=False,
                                      help_text="Si True, l'incident a été supprimé (corbeille).")
+    deleted_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Horodatage de la mise en corbeille (is_deleted=True). Sert à la purge des 30 j (spec D10)."
+    )
+    taken_in_charge_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Horodatage de la prise en compte (passage en 'taken_into_account'). "
+                  "Sert au calcul du délai anti-gel (spec T3)."
+    )
+    # --- Anti-gel (spec T3 / §5) : sévérité + drapeaux d'avertissement (75 % / 90 %) ---
+    severity = models.CharField(
+        max_length=10, choices=SEVERITY_CHOICES, null=True, blank=True,
+        default=SEVERITY_MEDIUM,
+        help_text="Sévérité catégorielle. Pilote le délai anti-gel "
+                  "(Élevée 30 j / Moyenne 60 j / Faible 90 j ; défaut/inconnue : 60 j)."
+    )
+    antigel_warned_75 = models.BooleanField(
+        default=False,
+        help_text="Avertissement anti-gel à 75 % du délai déjà envoyé au leader. "
+                  "Remis à False à chaque (re)prise en compte (spec T3)."
+    )
+    antigel_warned_90 = models.BooleanField(
+        default=False,
+        help_text="Avertissement anti-gel à 90 % du délai déjà envoyé au leader. "
+                  "Remis à False à chaque (re)prise en compte (spec T3)."
+    )
+    # --- Phase 4 : flux de résolution (résolution préparée → validation → définitif) ---
+    resolution_submitted_by = models.ForeignKey(
+        User, related_name='+', null=True, blank=True, on_delete=models.SET_NULL,
+        help_text="Membre (agent de bureau/admin) ayant monté le dossier de résolution."
+    )
+    resolution_submitted_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Date de soumission du dossier de résolution préparée."
+    )
+    validation_deadline = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Échéance de contrôle Super Admin (72h après déclaration de résolution)."
+    )
+    rejection_reason = models.TextField(
+        null=True, blank=True,
+        help_text="Motif de refus de la résolution par le Super Admin."
+    )
 
     def __str__(self):
         return self.zone + ' '
+
+    def save(self, *args, **kwargs):
+        # Génère une miniature (≈320px) à partir de la photo, une seule fois, pour
+        # alléger le chargement de l'onglet incidents. N'échoue jamais la sauvegarde
+        # de l'incident si la génération de la miniature échoue.
+        if self.photo and not self.thumbnail:
+            self._generate_thumbnail()
+        # Un incident résolu/clôturé est à 100% de progression — même s'il n'a aucune
+        # tâche (sinon `progress` restait à 0 et le front affichait 0% pour un incident
+        # résolu). On ajoute 'progress' à update_fields si fourni, pour bien le persister.
+        if self.etat in (RESOLVED, RESOLVED_DEFINITIVE) and self.progress != 100:
+            self.progress = 100
+            update_fields = kwargs.get('update_fields')
+            if update_fields is not None:
+                kwargs['update_fields'] = list(set(update_fields) | {'progress'})
+        super().save(*args, **kwargs)
+
+    def _generate_thumbnail(self, size=(320, 320)):
+        import logging
+        from io import BytesIO
+        from PIL import Image
+        from django.core.files.base import ContentFile
+        try:
+            self.photo.seek(0)
+            data = self.photo.read()
+            self.photo.seek(0)  # réinitialise le flux : la photo doit se sauvegarder intacte
+            img = Image.open(BytesIO(data)).convert('RGB')
+            img.thumbnail(size)  # conserve le ratio, borne à size
+            buf = BytesIO()
+            img.save(buf, format='JPEG', quality=80, optimize=True)
+            self.thumbnail.save(f"thumb_{self.pk}.jpg", ContentFile(buf.getvalue()), save=False)
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger(__name__).warning(
+                "Génération miniature échouée pour l'incident %s: %s", self.pk, exc)
 
     def update_progress(self, save=True):
         """Recalcule la progression de l'incident en fonction de ses tâches confirmées.
@@ -528,13 +734,17 @@ class Incident(models.Model):
         Une tâche 'failed' est considérée comme close (poids 1) mais ne contribue pas à 100%.
         Progression = round(done / total * 100).
         """
-        tasks = self.tasks.filter(is_confirmed=True)
-        total = tasks.count()
-        if total == 0:
-            self.progress = 0
+        # Un incident résolu est à 100% quoi qu'il arrive (clôture = terminé).
+        if self.etat in (RESOLVED, RESOLVED_DEFINITIVE):
+            self.progress = 100
         else:
-            done = tasks.filter(state=TASK_DONE).count()
-            self.progress = round(done * 100 / total)
+            tasks = self.tasks.filter(is_confirmed=True)
+            total = tasks.count()
+            if total == 0:
+                self.progress = 0
+            else:
+                done = tasks.filter(state=TASK_DONE).count()
+                self.progress = round(done * 100 / total)
         if save:
             self.save(update_fields=['progress'])
         return self.progress
@@ -559,7 +769,7 @@ class Incident(models.Model):
         return False
 
 
-class Evenement(models.Model):
+class Evenement(UUIDModel):
     title = models.CharField(max_length=255, blank=True,
                              null=True)
     zone = models.CharField(max_length=255, blank=False,
@@ -587,7 +797,7 @@ class Evenement(models.Model):
         return self.zone + ' '
 
 
-class Contact(models.Model):
+class Contact(UUIDModel):
     objet = models.CharField(max_length=250, blank=False,
                              null=False)
     message = models.TextField(max_length=500, blank=True, null=True)
@@ -599,7 +809,7 @@ class Contact(models.Model):
         return self.objet + ' '
 
 
-class Communaute(models.Model):
+class Communaute(UUIDModel):
     name = models.CharField(max_length=250, blank=False,
                             null=False)
     zone = models.ForeignKey('Zone', db_column='zone_communaute_id', related_name='Zone_communaute',
@@ -610,7 +820,7 @@ class Communaute(models.Model):
         return self.name + ' '
 
 
-class Rapport(models.Model):
+class Rapport(UUIDModel):
     details = models.CharField(max_length=500, blank=False,
                                null=False)
     type = models.CharField(max_length=500, blank=True,
@@ -635,7 +845,7 @@ class Rapport(models.Model):
         return self.details + ' '
 
 
-class Participate(models.Model):
+class Participate(UUIDModel):
     evenement_id = models.ForeignKey('Evenement', db_column='event_participate_id', related_name='event_participate',
                                      on_delete=models.CASCADE, null=True)
     user_id = models.ForeignKey('User', db_column='user_participate_id', related_name='user_participate',
@@ -643,7 +853,7 @@ class Participate(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 
-class Zone(models.Model):
+class Zone(UUIDModel):
     name = models.CharField(max_length=250, blank=False,
                             null=False, unique=True)
     description = models.TextField(max_length=500, blank=True, null=True)  # Added description field
@@ -660,7 +870,7 @@ class Zone(models.Model):
         return self.name + ' '
 
 
-class Message(models.Model):
+class Message(UUIDModel):
     objet = models.CharField(max_length=250, blank=False,
                              null=False)
     message = models.CharField(max_length=250, blank=False, null=False)
@@ -677,7 +887,7 @@ class Message(models.Model):
         return self.objet + ' '
 
 
-class ResponseMessage(models.Model):
+class ResponseMessage(UUIDModel):
     response = models.CharField(max_length=250, blank=False, null=False)
 
     message = models.ForeignKey('Message', db_column='mess_resp_id', related_name='resp_mess', on_delete=models.CASCADE,
@@ -690,7 +900,7 @@ class ResponseMessage(models.Model):
         return self.response + ' '
 
 
-class Category(models.Model):
+class Category(UUIDModel):
     name = models.CharField(max_length=250, blank=False,
                             null=False, unique=True)
     description = models.TextField(max_length=500, blank=True, null=True)  # Added description field
@@ -702,7 +912,7 @@ class Category(models.Model):
         return self.name + ' '
 
 
-class Indicateur(models.Model):
+class Indicateur(UUIDModel):
     name = models.CharField(max_length=250, blank=False,
                             null=False, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -711,7 +921,7 @@ class Indicateur(models.Model):
         return self.name + ' '
 
 
-class PasswordReset(models.Model):
+class PasswordReset(UUIDModel):
     code = models.CharField(max_length=7, blank=False, null=False)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, blank=False, null=False, on_delete=models.CASCADE)
     date_created = models.DateTimeField(auto_now_add=True)
@@ -719,27 +929,27 @@ class PasswordReset(models.Model):
     date_used = models.DateTimeField(null=True)
 
 
-class ImageBackground(models.Model):
+class ImageBackground(UUIDModel):
     photo = models.ImageField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 
 # verification code otp
-class PhoneOTP(models.Model):
+class PhoneOTP(UUIDModel):
     phone_number = models.CharField(max_length=15)
     otp_code = models.CharField(max_length=6)
     created_at = models.DateTimeField(auto_now_add=True)
 
 # Collaboration table
-class Collaboration(models.Model):
+class Collaboration(UUIDModel):
     incident = models.ForeignKey('Incident', blank=False, null=False, on_delete=models.CASCADE)
     user = models.ForeignKey(User, blank=False, null=False, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     end_date = models.DateField(blank=True, null=True)
     motivation = models.TextField(blank=True, null=True)
     other_option = models.CharField(max_length=255, blank=True, null=True)
-    status = models.CharField(max_length=20, default='pending', db_index=True)
-    role = models.CharField(max_length=20, choices=COLLAB_ROLES, default=COLLAB_ROLE_CONTRIBUTOR, db_index=True,
+    status = models.CharField(max_length=20, default='pending')
+    role = models.CharField(max_length=20, choices=COLLAB_ROLES, default=COLLAB_ROLE_CONTRIBUTOR,
                             help_text="Rôle de l'organisation sur l'incident : leader, contributor ou observer.")
 
     class Meta:
@@ -749,7 +959,7 @@ class Collaboration(models.Model):
         return f"Collaboration on {self.incident} by {self.user} ({self.role})"
     
 # Collaboration table
-class Colaboration(models.Model):
+class Colaboration(UUIDModel):
     incident = models.ForeignKey('Incident', blank=False, null=False, on_delete=models.CASCADE)
     user = models.ForeignKey(User, blank=False, null=False, on_delete=models.CASCADE)
     end_date = models.DateField()
@@ -769,7 +979,7 @@ class PredictionStatus(models.TextChoices):
     FAILED = "failed", "Failed"
 
 
-class Prediction(models.Model):
+class Prediction(UUIDModel):
     # --- Legacy fields (kept nullable for backward compatibility) ---
     # NOTE: ``incident_id`` was the legacy CharField. It has been renamed to
     # ``legacy_incident_id`` because the new ``incident`` ForeignKey below
@@ -790,7 +1000,7 @@ class Prediction(models.Model):
     )
     status = models.CharField(
         max_length=32, choices=PredictionStatus.choices,
-        default=PredictionStatus.PENDING, db_index=True
+        default=PredictionStatus.PENDING
     )
 
     macro_category = models.CharField(max_length=255, blank=True, default='')
@@ -872,16 +1082,65 @@ class Prediction(models.Model):
         super().save(*args, **kwargs)
 
 
-class Notification(models.Model):
+NOTIF_TYPE_TITLES = {
+    'collaboration_request': 'Demande de collaboration',
+    'collaboration_accepted': 'Collaboration acceptée',
+    'collaboration_declined': 'Collaboration refusée',
+    'deadline_warning': 'Alerte délai',
+    'incident_report': 'Nouvel incident signalé',
+    'incident_assignment': 'Incident assigné',
+}
+
+
+class Notification(UUIDModel):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     message = models.CharField(max_length=255)
+    # Catégorie de la notification (pour titre/icône côté front, plus de titre en
+    # dur). cf. NOTIF_TYPE_TITLES pour le libellé FR par défaut.
+    notif_type = models.CharField(max_length=40, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     read = models.BooleanField(default=False)
-    colaboration = models.ForeignKey(Collaboration, on_delete=models.CASCADE)
+    # Rendu nullable (Phase 4 — Feature 3 « Signaler à mon Admin ») : une
+    # notification peut désormais exister sans collaboration rattachée.
+    colaboration = models.ForeignKey(Collaboration, on_delete=models.CASCADE, null=True, blank=True)
+    # Incident concerné (pour la redirection au clic sur la notification).
+    incident = models.ForeignKey('Incident', on_delete=models.CASCADE, related_name='notifications', null=True, blank=True)
 
     def __str__(self):
         return self.message
-    
+
+    @property
+    def title(self):
+        """Titre FR par défaut selon le type (le front peut le surcharger)."""
+        return NOTIF_TYPE_TITLES.get(self.notif_type, 'Notification')
+
+    def redirect_link(self):
+        """Cible de redirection au clic sur la notification (ou None).
+
+        - ``collaboration_request`` (demande REÇUE par le leader) → page collaboration,
+          onglet « Demandes » (là où on accepte/refuse), PAS le détail.
+        - autre notif de collaboration (acceptée/refusée…) → détail de la collaboration,
+          via le **collaboration_id** (et non l'incident_id — c'est l'id attendu par la
+          route ``/collaboration-detail/<id>``).
+        - sinon, si un incident est lié → page de l'incident.
+        """
+        incident_id = self.incident_id or getattr(getattr(self, 'colaboration', None), 'incident_id', None)
+        if self.colaboration_id:
+            collab_id = str(self.colaboration_id)
+            inc = str(incident_id) if incident_id else None
+            if self.notif_type == 'collaboration_request':
+                return {'type': 'collaboration_request', 'tab': 'requests',
+                        'collaboration_id': collab_id, 'incident_id': inc,
+                        'url': '/collaboration?tab=requests'}
+            return {'type': 'collaboration', 'tab': 'mes-collaborations',
+                    'collaboration_id': collab_id, 'incident_id': inc,
+                    'url': f'/collaboration-detail/{collab_id}'}
+        if incident_id:
+            return {'type': 'incident', 'incident_id': str(incident_id),
+                    'url': f'/incidents/{incident_id}'}
+        return None
+
+
 CHAT_ROLE_USER = 'user'
 CHAT_ROLE_ASSISTANT = 'assistant'
 CHAT_ROLE_SYSTEM = 'system'
@@ -892,13 +1151,8 @@ CHAT_ROLES = (
 )
 
 
-class ChatHistory(models.Model):
-    # --- Legacy fields (kept nullable for backward compatibility) ---
-    session_id = models.CharField(max_length=255, db_index=True, blank=True, null=True)
-    question = models.TextField(db_index=True, blank=True, null=True)
-    answer = models.TextField(db_index=True, blank=True, null=True)
-
-    # --- New per-message fields tied to an Incident ---
+class ChatHistory(UUIDModel):
+    # Un message du chat IA d'un incident, propre à un utilisateur (incident + user).
     incident = models.ForeignKey(
         'Incident', on_delete=models.CASCADE,
         related_name='chat_messages', null=True, blank=True,
@@ -917,15 +1171,21 @@ class ChatHistory(models.Model):
     def __str__(self):
         return f"[{self.role}] {self.content[:60]}"
 
-class UserAction(models.Model):
+class UserAction(UUIDModel):
     user = models.ForeignKey(User, on_delete=models.CASCADE, blank=False, null=False)
     action = models.CharField(max_length=255)
     timeStamp = models.DateField(auto_now_add=True)
+    # Horodatage précis (le `timeStamp` historique est une date seule) — utilisé par
+    # le flux d'activité pour afficher "il y a X min". Nullable pour les lignes existantes.
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+
+    class Meta:
+        ordering = ('-created_at', '-timeStamp')
 
     def __str__(self):
         return self.action
     
-class DiscussionMessage(models.Model):
+class DiscussionMessage(UUIDModel):
     incident = models.ForeignKey('Incident', on_delete=models.CASCADE)
     collaboration = models.ForeignKey(Collaboration, on_delete=models.CASCADE)
     sender = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -953,13 +1213,13 @@ class DiscussionMessage(models.Model):
 
 
 # --- Tâches d'incident (gérées par le leader) ---
-class IncidentTask(models.Model):
+class IncidentTask(UUIDModel):
     incident = models.ForeignKey('Incident', related_name='tasks', on_delete=models.CASCADE)
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
     start_date = models.DateField()
     end_date = models.DateField()
-    state = models.CharField(max_length=20, choices=TASK_STATES, default=TASK_PENDING, db_index=True)
+    state = models.CharField(max_length=20, choices=TASK_STATES, default=TASK_PENDING)
     proof_image = models.ImageField(upload_to='tasks/proofs/', storage=ImageStorage(),
                                     null=True, blank=True,
                                     help_text="Image de preuve quand la tâche est marquée 'done'.")
@@ -972,7 +1232,7 @@ class IncidentTask(models.Model):
                                     on_delete=models.SET_NULL)
     created_by = models.ForeignKey(User, related_name='created_tasks', on_delete=models.CASCADE)
     is_confirmed = models.BooleanField(
-        default=False, db_index=True,
+        default=False,
         help_text="True si la tâche a été confirmée par le leader. "
                   "Seules les tâches confirmées comptent dans la progression."
     )
@@ -1030,7 +1290,7 @@ class IncidentTask(models.Model):
 
 
 # --- Suggestions de partenaires (par contributors, validées par le leader) ---
-class PartnerSuggestion(models.Model):
+class PartnerSuggestion(UUIDModel):
     incident = models.ForeignKey('Incident', related_name='partner_suggestions', on_delete=models.CASCADE)
     suggested_by = models.ForeignKey(User, related_name='suggestions_made', on_delete=models.CASCADE,
                                      help_text="Contributeur à l'origine de la suggestion.")
@@ -1050,12 +1310,12 @@ class PartnerSuggestion(models.Model):
     def __str__(self):
         return f"Suggestion {self.suggested_partner} ({self.suggested_role}) on {self.incident} - {self.status}"
 
-class OrganisationTag(models.Model):
+class OrganisationTag(UUIDModel):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='incident_preferences')
     incident_type = models.CharField(max_length=255)
 
 
-class IVRCall(models.Model):
+class IVRCall(UUIDModel):
     call_sid = models.CharField(max_length=255, unique=True)
     phone_number = models.CharField(max_length=20)
     status = models.CharField(max_length=50, default='initiated')
@@ -1072,7 +1332,7 @@ class IVRCall(models.Model):
         return f"IVR Call {self.call_sid} - {self.phone_number}"
 
 
-class IVRInteraction(models.Model):
+class IVRInteraction(UUIDModel):
     ivr_call = models.ForeignKey('IVRCall', on_delete=models.CASCADE, related_name='interactions')
     step = models.CharField(max_length=50)
     user_input = models.CharField(max_length=255, blank=True, null=True)

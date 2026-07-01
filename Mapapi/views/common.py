@@ -22,6 +22,27 @@ class CustomPageNumberPagination(PageNumberPagination):
     max_page_size = 1000
 
 
+class IncidentPagination(CustomPageNumberPagination):
+    # Défaut adapté à l'onglet incidents (tableau + miniatures). Surchargeable via
+    # ?page_size= (ex. ?page_size=12 pour une grille de cartes), plafonné à 100.
+    page_size = 20
+    max_page_size = 100
+
+
+class NotificationPagination(CustomPageNumberPagination):
+    # Défaut adapté au panneau de notifications. Surchargeable via ?page_size=.
+    page_size = 20
+    max_page_size = 100
+
+
+class FieldReportPagination(CustomPageNumberPagination):
+    # Petits lots pour un bouton « charger plus » sur les rapports d'agents.
+    # Le front charge la page suivante via `next` jusqu'à ce qu'il soit null.
+    # Surchargeable via ?page_size= (plafonné à 100).
+    page_size = 10
+    max_page_size = 100
+
+
 def get_random(length=7):
     """Generate a random alphanumeric code (default length=7, used for password reset).
 

@@ -3,16 +3,68 @@ from rest_framework import status, generics
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter, OpenApiResponse
+from drf_spectacular.types import OpenApiTypes
 
 from ..serializer import *
 from .common import CustomPageNumberPagination
 
 
-@extend_schema(
-    description="Endpoint allowing retrieval, updating, and deletion of participation.",
-    request=ParticipateSerializer,
-    responses={200: ParticipateSerializer, 404: "Participation not found"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Événements & Participation'],
+        operation_id='participations_retrieve',
+        summary="Détails d'une participation",
+        description="Retourne une participation par son id. Endpoint public.",
+        parameters=[
+            OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                             description="id de la participation"),
+        ],
+        responses={200: ParticipateSerializer, 404: OpenApiResponse(description="Participation introuvable")},
+    ),
+    put=extend_schema(
+        tags=['Événements & Participation'],
+        operation_id='participations_update',
+        summary="Mettre à jour une participation",
+        description="Met à jour entièrement une participation existante. Endpoint public.",
+        parameters=[
+            OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                             description="id de la participation"),
+        ],
+        request=ParticipateSerializer,
+        responses={
+            200: ParticipateSerializer,
+            400: OpenApiResponse(description="Erreurs de validation"),
+            404: OpenApiResponse(description="Participation introuvable"),
+        },
+    ),
+    delete=extend_schema(
+        tags=['Événements & Participation'],
+        operation_id='participations_destroy',
+        summary="Supprimer une participation",
+        description="Supprime une participation par son id. Endpoint public.",
+        parameters=[
+            OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                             description="id de la participation"),
+        ],
+        responses={
+            204: OpenApiResponse(description="Participation supprimée"),
+            404: OpenApiResponse(description="Participation introuvable"),
+        },
+    ),
+    post=extend_schema(
+        tags=['Événements & Participation'],
+        operation_id='participations_create_at_id',
+        summary="Créer une participation (route /participate/<id>)",
+        description="Hérité de `CreateAPIView` : crée une nouvelle participation (l'id du "
+                    "chemin est ignoré). Préférer `POST /participate/`. Endpoint public.",
+        parameters=[
+            OpenApiParameter('id', OpenApiTypes.UUID, OpenApiParameter.PATH,
+                             description="ignoré"),
+        ],
+        request=ParticipateSerializer,
+        responses={201: ParticipateSerializer, 400: OpenApiResponse(description="Erreurs de validation")},
+    ),
 )
 class ParticipateAPIView(generics.CreateAPIView):
     permission_classes = (
@@ -47,10 +99,23 @@ class ParticipateAPIView(generics.CreateAPIView):
         item.delete()
         return Response(status=204)
 
-@extend_schema(
-    description="Endpoint allowing retrieval and creating of participation.",
-    request=ParticipateSerializer,
-    responses={201: ParticipateSerializer, 400: "serializer error"},  
+@extend_schema_view(
+    get=extend_schema(
+        tags=['Événements & Participation'],
+        operation_id='participations_list',
+        summary="Lister les participations",
+        description="Retourne la liste paginée des participations (10 par page). Endpoint public.",
+        responses={200: ParticipateSerializer(many=True)},
+    ),
+    post=extend_schema(
+        tags=['Événements & Participation'],
+        operation_id='participations_create',
+        summary="Créer une participation",
+        description="Crée une participation à un événement. Effet de bord : +1 point pour "
+                    "l'utilisateur référencé par `user_id`. Endpoint public.",
+        request=ParticipateSerializer,
+        responses={201: ParticipateSerializer, 400: OpenApiResponse(description="Erreurs de validation")},
+    ),
 )
 class ParticipateAPIListView(generics.ListCreateAPIView):
     permission_classes = ()
