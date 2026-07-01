@@ -1289,6 +1289,15 @@ class IncidentFilterView(APIView):
         elif filter_type == 'custom_range' and custom_start and custom_end:
             incidents = incidents.filter(created_at__date__range=[custom_start, custom_end])
 
+        # --- Filtre pays (optionnel) ---
+        # Pays géocodé de la prédiction IA de l'incident (Prediction.country).
+        # Ex. ?country=Mali ou ?country=mali ou ?country=burkina_faso (insensible à la
+        # casse et aux underscores) → seulement les incidents localisés dans ce pays.
+        # Le front peut passer l'`intervention_country` de l'org du user connecté.
+        country = (request.query_params.get('country') or '').replace('_', ' ').strip()
+        if country:
+            incidents = incidents.filter(prediction__country__iexact=country)
+
         # Pagination OPT-IN pour un chargement progressif de la carte : si ?page ou
         # ?page_size est fourni, on renvoie une page {count, next, previous, results}
         # (marqueurs légers IncidentMapSerializer, ?page_size plafonné à 100) ; sinon
