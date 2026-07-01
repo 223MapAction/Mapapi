@@ -53,37 +53,16 @@ from .. import roles as web_roles
 
 
 def visible_incidents_qs(base_qs, user):
-    """Restreint un queryset d'incidents selon le rôle web du demandeur (spec §1, §6).
+    """Incidents visibles dans les listes incident.
 
-    - super_admin            → tout (aucun filtre).
-    - org_admin/bureau_agent → incidents INTERNES de SON org (reporter dans l'org)
-                               UNION incidents PUBLICS de son PAYS (pays dérivé de l'org
-                               du reporter ; si le reporter n'a pas d'org, le pays est
-                               indéterminable → on garde l'incident public, signalement citoyen).
-    - sinon (pas de rôle web) → incidents publics uniquement.
-
-    NB : il n'existe pas de champ `Incident.country` ; le pays est dérivé de
-    l'organisation du reporter (`user_id.organisation_member.intervention_country`).
+    Décision produit (2026-07) : TOUT utilisateur authentifié — super_admin,
+    org_admin, agent de terrain, etc. — voit l'ENSEMBLE des incidents dans les
+    listes (cohérent avec le total affiché sur le dashboard). Les appels NON
+    authentifiés (endpoints publics) restent limités aux incidents publics pour
+    ne pas exposer les incidents internes (is_public=False).
     """
-    role = web_roles.get_web_role(user)
-
-    if role == web_roles.SUPER_ADMIN:
+    if user and getattr(user, 'is_authenticated', False):
         return base_qs
-
-    if role in (web_roles.ORG_ADMIN, web_roles.BUREAU_AGENT):
-        org = getattr(user, 'organisation_member', None)
-        country = getattr(org, 'intervention_country', None) if org else None
-        # (a) incidents internes dont le reporter appartient à MON org
-        internal_own = Q(is_public=False, user_id__organisation_member=org)
-        # (b) incidents publics de mon pays OU au pays indéterminable (reporter sans org)
-        public_in_country = Q(is_public=True) & (
-            Q(user_id__organisation_member__intervention_country=country)
-            | Q(user_id__organisation_member__isnull=True)
-            | Q(user_id__isnull=True)
-        )
-        return base_qs.filter(internal_own | public_in_country)
-
-    # Aucun rôle web reconnu → public seulement.
     return base_qs.filter(is_public=True)
 
 
