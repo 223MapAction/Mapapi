@@ -33,7 +33,7 @@ from .views.collaboration import (
 from .views.organisation import (
     OrganisationMemberListView, OrganisationMemberCreateView,
     OrganisationMemberDetailView, OrganisationDetailView, OrganisationStatsView,
-    FieldAgentCreateView, StaffAccountCreateView,
+    FieldAgentCreateView, StaffAccountCreateView, OtherOrganisationsView,
 )
 from .ivr_views import (
     TwilioIVRWebhook, SelectZoneView, SelectCategoryView,
@@ -61,6 +61,7 @@ urlpatterns = [
     path('tenant-config/', TenantConfigView.as_view(), name='tenant_config'),
     path('organisations/', OrganisationViewSet.as_view(), name='organisation-list-create'),
     path('organisations/stats/', OrganisationStatsView.as_view(), name='organisation-stats'),
+    path('organisations/others/', OtherOrganisationsView.as_view(), name='organisations-others'),
     path('organisations/<uuid:pk>/', OrganisationViewSet.as_view(), name='organisation-detail'),
     path('organisations/<uuid:pk>/detail/', OrganisationDetailView.as_view(), name='organisation-detail-enriched'),
     # --- Gestion des membres d'une organisation ---
