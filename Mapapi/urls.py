@@ -189,6 +189,7 @@ urlpatterns = [
     path('notifications/mark-all-read/', NotificationViewSet.as_view({'post': 'mark_all_read'}), name="notification-mark-all-read"),
     path('notifications/<uuid:pk>/', NotificationViewSet.as_view({'get': 'retrieve', 'patch': 'partial_update'}), name="notification-detail"),
     path('activity-feed/', ActivityFeedView.as_view(), name="activity-feed"),
+    path('activity-feed/mark-seen/', ActivityFeedMarkSeenView.as_view(), name="activity-feed-mark-seen"),
     path('agents/stats/', AgentStatsView.as_view(), name="agents-stats"),
     path('agents/', AgentListView.as_view(), name="agents-list"),
     path('hadleIncident/<uuid:incident_id>', HandleIncidentView.as_view(), name="handle"),
