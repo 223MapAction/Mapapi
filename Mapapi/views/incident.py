@@ -69,6 +69,21 @@ def visible_incidents_qs(base_qs, user):
     return base_qs.filter(is_public=True)
 
 
+# Correspondance code pays (front / `intervention_country`) -> noms géocodés
+# possibles (`Prediction.country`), en formes NON accentuées : comparées via
+# __unaccent__iexact (donc « Sénégal » ↔ « Senegal », « Guinée » ↔ « Guinee »/
+# « Guinea »…). Couvre les variantes FR et EN du géocodage.
+COUNTRY_GEOCODE_ALIASES = {
+    'mali': ['Mali'],
+    'senegal': ['Senegal'],
+    'guinea': ['Guinee', 'Guinea'],
+    'burkina_faso': ['Burkina Faso'],
+    'niger': ['Niger'],
+    'cote_divoire': ["Cote d'Ivoire", 'Ivory Coast'],
+    'mauritania': ['Mauritanie', 'Mauritania'],
+}
+
+
 # États « résolus » exposés par /incidentResolved/ (résolu + résolu définitif).
 # /incidentNotResolved/ = tout le reste (declared, taken_into_account, in_progress,
 # in_validation) — et non plus seulement 'declared' comme avant.
@@ -1290,13 +1305,18 @@ class IncidentFilterView(APIView):
             incidents = incidents.filter(created_at__date__range=[custom_start, custom_end])
 
         # --- Filtre pays (optionnel) ---
-        # Pays géocodé de la prédiction IA de l'incident (Prediction.country).
-        # Ex. ?country=Mali ou ?country=mali ou ?country=burkina_faso (insensible à la
-        # casse et aux underscores) → seulement les incidents localisés dans ce pays.
-        # Le front peut passer l'`intervention_country` de l'org du user connecté.
-        country = (request.query_params.get('country') or '').replace('_', ' ').strip()
+        # Le front envoie un code pays (`intervention_country` : mali, senegal,
+        # burkina_faso, cote_divoire, …). On le fait correspondre au pays GÉOCODÉ de la
+        # prédiction (`Prediction.country`) en tolérant les variantes FR/EN et les
+        # accents (extension `unaccent`). Un incident sans pays géocodé n'est pas
+        # renvoyé quand le filtre est actif (il reste visible dans la vue sans filtre).
+        country = (request.query_params.get('country') or '').strip().lower()
         if country:
-            incidents = incidents.filter(prediction__country__iexact=country)
+            names = COUNTRY_GEOCODE_ALIASES.get(country, [deaccent(country.replace('_', ' '))])
+            q = Q()
+            for name in names:
+                q |= Q(prediction__country__unaccent__iexact=name)
+            incidents = incidents.filter(q)
 
         # Pagination OPT-IN pour un chargement progressif de la carte : si ?page ou
         # ?page_size est fourni, on renvoie une page {count, next, previous, results}
