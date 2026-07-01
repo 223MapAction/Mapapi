@@ -23,6 +23,7 @@ from drf_spectacular.types import OpenApiTypes
 
 from ..serializer import *
 from ..models import Collaboration, Incident, COLLAB_ROLE_LEADER
+from ..roles import is_super_admin
 from .common import CustomPageNumberPagination
 
 
@@ -491,8 +492,10 @@ class DiscussionMessageView(generics.ListCreateAPIView):
         incident_id = self.kwargs.get('incident_id')
         user = self.request.user
 
-        # Vérifier que l'utilisateur est collaborateur accepté
-        self._get_user_collaboration(incident_id, user)
+        # Vérifier que l'utilisateur est collaborateur accepté (le super admin a
+        # un accès complet en lecture à toute discussion).
+        if not is_super_admin(user):
+            self._get_user_collaboration(incident_id, user)
 
         # Chat de groupe : tous les messages de l'incident
         return DiscussionMessage.objects.filter(
@@ -555,8 +558,13 @@ class DiscussionMessageView(generics.ListCreateAPIView):
         incident_id = self.kwargs.get('incident_id')
         user = self.request.user
 
-        collaboration = self._get_user_collaboration(incident_id, user)
-        incident = collaboration.incident
+        # Le super admin peut poster sans être collaborateur ; sinon on exige
+        # une collaboration acceptée.
+        if is_super_admin(user):
+            incident = Incident.objects.get(pk=incident_id)
+        else:
+            collaboration = self._get_user_collaboration(incident_id, user)
+            incident = collaboration.incident
 
         if incident.etat == "resolved":
             raise ValidationError("Cet incident est résolu, la discussion est terminée.")
