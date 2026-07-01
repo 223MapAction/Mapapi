@@ -1,5 +1,6 @@
 """Notification & user-action endpoints."""
 from rest_framework import viewsets, generics, status
+from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -150,8 +151,40 @@ class ActivityFeedView(generics.ListAPIView):
         return qs  # tri par défaut depuis Meta (-created_at, -timeStamp)
 
     def list(self, request, *args, **kwargs):
-        """Liste paginée + `total_count` (nombre total d'activités du flux)."""
+        """Liste paginée + compteurs total / vues / non-vues du flux.
+
+        `unseen_count` = éléments du flux postérieurs à la dernière consultation
+        (`user.activity_seen_at`) ; tout est « non vu » si l'utilisateur n'a jamais
+        consulté le flux. `POST /activity-feed/mark-seen/` met l'horodatage à jour.
+        """
         response = super().list(request, *args, **kwargs)
         if isinstance(response.data, dict):
-            response.data['total_count'] = self.get_queryset().count()
+            qs = self.get_queryset()
+            total = qs.count()
+            seen_at = getattr(request.user, 'activity_seen_at', None)
+            unseen = qs.filter(created_at__gt=seen_at).count() if seen_at else total
+            response.data['total_count'] = total
+            response.data['unseen_count'] = unseen
+            response.data['seen_count'] = total - unseen
         return response
+
+
+@extend_schema(
+    tags=['Notifications'],
+    operation_id='activity_feed_mark_seen',
+    summary="Marquer le flux d'activité comme vu",
+    description="Met à jour la date de dernière consultation du flux d'activité "
+                "de l'utilisateur connecté → `unseen_count` repasse à 0. Auth requise.",
+    request=None,
+    responses={200: OpenApiTypes.OBJECT},
+)
+class ActivityFeedMarkSeenView(APIView):
+    """POST /activity-feed/mark-seen/ — marque le flux d'activité comme vu."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        from django.utils import timezone
+        request.user.activity_seen_at = timezone.now()
+        request.user.save(update_fields=['activity_seen_at'])
+        return Response({'activity_seen_at': request.user.activity_seen_at},
+                        status=status.HTTP_200_OK)

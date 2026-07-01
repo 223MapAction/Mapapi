@@ -425,6 +425,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_verified = models.BooleanField(default=False)
     otp = models.CharField(max_length=6, blank=True, null=True)
     otp_expiration = models.DateTimeField(blank=True, null=True)
+    # Dernière consultation du flux d'activité (vues/non-vues) : tout élément du
+    # flux postérieur à cette date est considéré « non vu » par l'utilisateur.
+    activity_seen_at = models.DateTimeField(blank=True, null=True)
     objects = UserManager()
 
     USERNAME_FIELD = 'email'
