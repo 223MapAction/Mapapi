@@ -157,7 +157,7 @@ SPECTACULAR_SETTINGS = {
     'CONTACT': {'name': 'Map Action', 'url': 'https://github.com/223MapAction'},
     'LICENSE': {'name': 'Proprietary'},
     'SERVERS': [
-        {'url': 'https://backend-production-0726b.up.railway.app', 'description': 'Production (Railway)'},
+        {'url': 'https://api.map-action.com', 'description': 'Production (AWS)'},
         {'url': 'http://localhost:8000', 'description': 'Dev local (daphne direct)'},
         {'url': 'http://localhost', 'description': 'Dev local (via nginx)'},
     ],
