@@ -22,7 +22,7 @@ from ..serializer import CollaborationSerializer, CollaborationEnrichedSerialize
 from ..permissions import IsOrgAdmin, IsOrgOperative
 from ..roles import is_super_admin, is_org_admin, is_bureau_agent
 from ..Send_mails import send_email
-from .common import CustomPageNumberPagination
+from .common import CustomPageNumberPagination, deaccent
 
 
 def collaboration_scope_q(user, scope):
@@ -175,12 +175,13 @@ class CollaborationDashboardView(generics.ListAPIView):
         # --- Recherche textuelle ---
         search = self.request.query_params.get('search', '').strip()
         if search:
+            ua = deaccent(search)
             qs = qs.filter(
-                Q(incident__title__icontains=search)
-                | Q(user__organisation__icontains=search)
-                | Q(user__organisation_member__name__icontains=search)
-                | Q(role__icontains=search)
-                | Q(incident__zone__icontains=search)
+                Q(incident__title__unaccent__icontains=ua)
+                | Q(user__organisation__unaccent__icontains=ua)
+                | Q(user__organisation_member__name__unaccent__icontains=ua)
+                | Q(role__unaccent__icontains=ua)
+                | Q(incident__zone__unaccent__icontains=ua)
             )
 
         return qs

@@ -46,7 +46,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 from ..services.model_chat_client import ask_model_chat
-from .common import CustomPageNumberPagination, IncidentPagination, FieldReportPagination
+from .common import CustomPageNumberPagination, IncidentPagination, FieldReportPagination, deaccent
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth.hashers import check_password
 from .. import roles as web_roles
@@ -398,8 +398,9 @@ class IncidentAPIListView(generics.CreateAPIView):
         p = request.query_params
         search = (p.get('search') or '').strip()
         if search:
+            ua = deaccent(search)
             items = items.filter(
-                Q(title__icontains=search) | Q(description__icontains=search) | Q(zone__icontains=search)
+                Q(title__unaccent__icontains=ua) | Q(description__unaccent__icontains=ua) | Q(zone__unaccent__icontains=ua)
             )
         etat = p.get('etat') or p.get('status')
         if etat:
@@ -585,10 +586,11 @@ class OrgIncidentsView(generics.ListAPIView):
         p = self.request.query_params
         search = (p.get('search') or '').strip()
         if search:
+            ua = deaccent(search)
             qs = qs.filter(
-                Q(title__icontains=search)
-                | Q(description__icontains=search)
-                | Q(zone__icontains=search)
+                Q(title__unaccent__icontains=ua)
+                | Q(description__unaccent__icontains=ua)
+                | Q(zone__unaccent__icontains=ua)
             )
         status_etat = p.get('status') or p.get('etat')
         if status_etat:
