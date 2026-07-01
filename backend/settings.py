@@ -261,6 +261,26 @@ SOCIALACCOUNT_QUERY_EMAIL = True
 ACCOUNT_EMAIL_REQUIRED = True
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Options de connexion Postgres. Le pooler Supabase en mode « transaction »
+# (port 6543) REJETTE le paramètre de démarrage libpq « options »
+# (FATAL: unsupported startup parameter: options) : on ne peut donc PAS y fixer
+# search_path via la connexion. Ce n'est pas grave — le rôle Supabase a déjà
+# « public » AVANT « extensions » dans son search_path par défaut, et toutes les
+# tables de l'app sont dans public. Ailleurs (session pooler / connexion directe /
+# local / CI) le paramètre « options » est accepté et on force search_path.
+# Bascule explicite possible via DB_SET_SEARCH_PATH=true|false.
+_db_options = {
+    # 'require' par défaut (Supabase) ; override en local/CI via DB_SSLMODE.
+    'sslmode': os.environ.get('DB_SSLMODE', 'require'),
+}
+_set_search_path = os.environ.get(
+    'DB_SET_SEARCH_PATH',
+    'false' if os.environ.get('PORT') == '6543' else 'true',
+).lower() == 'true'
+if _set_search_path:
+    _db_options['options'] = '-c search_path=' + os.environ.get('DB_SEARCH_PATH', 'public')
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -279,14 +299,7 @@ DATABASES = {
         # Pooler en mode « transaction » (pgbouncer, port 6543) : les curseurs côté
         # serveur ne survivent pas entre transactions → requis avec CONN_MAX_AGE.
         'DISABLE_SERVER_SIDE_CURSORS': True,
-        'OPTIONS': {
-            # 'require' par défaut (Supabase) ; override en local/CI via DB_SSLMODE.
-            'sslmode': os.environ.get('DB_SSLMODE', 'require'),
-            # Schéma applicatif = public (best practice). Surcharge le search_path
-            # par défaut du rôle Supabase (qui inclut 'extensions'). Override possible
-            # via DB_SEARCH_PATH.
-            'options': '-c search_path=' + os.environ.get('DB_SEARCH_PATH', 'public'),
-        },
+        'OPTIONS': _db_options,
     },
 }
 
