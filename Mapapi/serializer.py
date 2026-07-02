@@ -933,6 +933,18 @@ class PartnerSuggestionSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False,
     )
+    # --- Champs de l'incident pour l'affichage des cartes (parité avec
+    # CollaborationSerializer). Sans eux, les demandes de partenariat s'affichaient
+    # dans l'onglet « Demandes » sans photo, description ni détails — contrairement
+    # aux cartes de collaboration. On expose donc EXACTEMENT les mêmes raccourcis.
+    incident_photo = serializers.ImageField(source='incident.photo', read_only=True)
+    incident_thumbnail = serializers.ImageField(source='incident.thumbnail', read_only=True)
+    incident_description = serializers.CharField(
+        source='incident.description', read_only=True, default=None
+    )
+    incident_zone = serializers.CharField(source='incident.zone', read_only=True, default=None)
+    incident_etat = serializers.CharField(source='incident.etat', read_only=True, default=None)
+    incident_details = IncidentSerializer(source='incident', read_only=True)
 
     class Meta:
         model = PartnerSuggestion
