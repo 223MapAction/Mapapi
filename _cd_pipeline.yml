@@ -119,7 +119,7 @@ services:
         build:
             context: .
             dockerfile: ./services/celery/Dockerfile.worker
-        command: celery -A backend worker --loglevel=debug
+        command: celery -A backend worker --loglevel=info
         volumes:
             - ~/celery_store:/celery-data
         depends_on:

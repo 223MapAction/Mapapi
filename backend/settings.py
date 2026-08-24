@@ -441,6 +441,12 @@ CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = 'UTC'
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60
+# Preserve the application's JSON console handler in workers instead of letting
+# Celery replace the root logger. Stray stdout/stderr is treated as WARNING so it
+# remains visible without enabling high-volume DEBUG logs.
+CELERY_WORKER_HIJACK_ROOT_LOGGER = False
+CELERY_WORKER_REDIRECT_STDOUTS = True
+CELERY_WORKER_REDIRECT_STDOUTS_LEVEL = 'WARNING'
 
 # Phase 4 — mécanismes temporels du cycle de vie de l'incident (Celery Beat).
 # Validation tacite 72 h (D1) + anti-gel (T3) : horaires. Purge corbeille 30 j (D10) : quotidien.
@@ -487,15 +493,42 @@ Q_CLUSTER = {
     }
 }
 
+LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').strip().upper()
+ACCESS_LOG_LEVEL = os.environ.get('ACCESS_LOG_LEVEL', 'WARNING').strip().upper()
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'safe_json': {
+            '()': 'backend.observability.SafeJsonFormatter',
+        },
+    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
+            'formatter': 'safe_json',
+            'level': LOG_LEVEL,
         },
     },
     'loggers': {
+        # Request access logs are useful locally but expensive at API volume.
+        # Errors still flow through Django's Sentry integration independently.
+        'daphne.access': {
+            'handlers': ['console'],
+            'level': ACCESS_LOG_LEVEL,
+            'propagate': False,
+        },
+        'django.server': {
+            'handlers': ['console'],
+            'level': ACCESS_LOG_LEVEL,
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
         'httpx': {
             'handlers': ['console'],
             'level': 'WARNING',
@@ -526,12 +559,24 @@ LOGGING = {
             'level': 'WARNING',
             'propagate': False,
         },
+        'sentry_sdk': {
+            'handlers': ['console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
     },
     'root': {
         'handlers': ['console'],
-        'level': 'DEBUG',
+        'level': LOG_LEVEL,
     },
 }
+
+# One initializer covers Django HTTP, Channels startup, Celery workers/beat, and
+# management commands because they all load this settings module. With no DSN it
+# is a fast no-op, which prevents local development and tests from sending data.
+from backend.observability import init_sentry  # noqa: E402
+
+SENTRY_ENABLED = init_sentry(debug=DEBUG, project_root=BASE_DIR)
 
 
 AUTH_USER_MODEL = 'Mapapi.User'

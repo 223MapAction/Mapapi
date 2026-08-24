@@ -1,4 +1,6 @@
 """Category endpoints."""
+import logging
+
 from rest_framework import status, generics
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
@@ -11,6 +13,9 @@ from drf_spectacular.types import OpenApiTypes
 
 from ..serializer import *
 from .common import CustomPageNumberPagination
+
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema_view(
@@ -120,11 +125,12 @@ class CategoryAPIListView(generics.ListCreateAPIView):
         try:
             return super().list(request, *args, **kwargs)
         except Exception as e:
+            logger.exception("Échec inattendu lors du chargement des catégories")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def create(self, request, *args, **kwargs):
         try:
             return super().create(request, *args, **kwargs)
         except Exception as e:
+            logger.exception("Échec inattendu lors de la création d'une catégorie")
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-

@@ -8,10 +8,8 @@ RUN pip install --upgrade pip
 
 RUN pip install -r requirements.txt
 
-# Add this line to load environment variables
-ENV $(cat .env | xargs)
-
-# Use an entrypoint script to load environment variables
+# Runtime configuration is injected by Compose via env_file. Never copy or
+# persist .env values in image layers/metadata.
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]

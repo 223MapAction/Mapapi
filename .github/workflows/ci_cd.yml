@@ -79,6 +79,14 @@ jobs:
             echo "MODEL_DEPLOY_CHAT_URL=${{ secrets.MODEL_DEPLOY_CHAT_URL }}"
             echo "MODEL_DEPLOY_CHAT_TIMEOUT=${{ secrets.MODEL_DEPLOY_CHAT_TIMEOUT }}"
             echo "FCM_CREDENTIALS_JSON_BASE64=${{ secrets.FCM_CREDENTIALS_JSON_BASE64 }}"
+            echo "LOG_LEVEL=INFO"
+            echo "ACCESS_LOG_LEVEL=WARNING"
+            echo "SENTRY_DSN=${{ secrets.SENTRY_DSN }}"
+            echo "SENTRY_ENVIRONMENT=production"
+            echo "SENTRY_RELEASE=${{ github.sha }}"
+            echo "SENTRY_SERVER_NAME=map-action-api"
+            echo "SENTRY_TRACES_SAMPLE_RATE=0.0"
+            echo "SENTRY_ENABLE_LOGS=False"
           } > .env
 
       - name: Build and Deploy Docker Image

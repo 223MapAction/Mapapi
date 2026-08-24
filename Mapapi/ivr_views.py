@@ -118,7 +118,7 @@ class SelectZoneView(View):
                 user_input=digits
             )
         except IVRCall.DoesNotExist:
-            logger.error(f"IVRCall not found for CallSid: {call_sid}")
+            logger.warning("Appel IVR introuvable pendant la sélection de zone")
         
         response = VoiceResponse()
         
@@ -207,8 +207,8 @@ class SelectCategoryView(View):
                     user_input=digits
                 )
             
-        except (IVRCall.DoesNotExist, ValueError, IndexError) as e:
-            logger.error(f"Error in SelectCategoryView: {e}")
+        except (IVRCall.DoesNotExist, ValueError, IndexError):
+            logger.warning("Sélection de catégorie IVR invalide")
         
         response = VoiceResponse()
         
@@ -282,8 +282,8 @@ class RecordDescriptionView(View):
                     user_input=digits
                 )
             
-        except (IVRCall.DoesNotExist, ValueError, IndexError) as e:
-            logger.error(f"Error in RecordDescriptionView: {e}")
+        except (IVRCall.DoesNotExist, ValueError, IndexError):
+            logger.warning("Sélection de description IVR invalide")
         
         response = VoiceResponse()
         
@@ -375,9 +375,9 @@ class ProcessRecordingView(View):
             ivr_call.save()
             
         except IVRCall.DoesNotExist:
-            logger.error(f"IVRCall not found for CallSid: {call_sid}")
-        except Exception as e:
-            logger.error(f"Error creating incident from IVR: {e}")
+            logger.warning("Appel IVR introuvable pendant la création d'incident")
+        except Exception:
+            logger.exception("Erreur inattendue pendant la création d'un incident IVR")
         
         response = VoiceResponse()
         response.say(
@@ -414,15 +414,14 @@ class RecordingStatusView(View):
     )
     def post(self, request):
         call_sid = request.POST.get('CallSid')
-        recording_url = request.POST.get('RecordingUrl')
         recording_status = request.POST.get('RecordingStatus')
         
         try:
-            ivr_call = IVRCall.objects.get(call_sid=call_sid)
-            logger.info(f"Recording status for {call_sid}: {recording_status}, URL: {recording_url}")
+            IVRCall.objects.only('pk').get(call_sid=call_sid)
+            logger.info("Statut d'enregistrement IVR reçu (status=%s)", recording_status)
             
         except IVRCall.DoesNotExist:
-            logger.error(f"IVRCall not found for CallSid: {call_sid}")
+            logger.warning("Appel IVR introuvable pendant le callback d'enregistrement")
         
         return HttpResponse(status=200)
 

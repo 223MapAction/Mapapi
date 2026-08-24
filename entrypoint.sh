@@ -1,13 +1,8 @@
 #!/bin/sh
 
-# Wait for postgres to be ready
-python manage.py wait_for_db
+set -e
 
-# Apply database migrations
-python manage.py migrate
-
-# Create superuser if it doesn't exist
-python manage.py createsuperuser --noinput || true
-
-# Start server
-python manage.py runserver 0.0.0.0:8000
+# Compose supplies the production Daphne command (including DB readiness and
+# migrations); the Dockerfile CMD remains the local fallback. Preserve signals
+# by replacing the shell with the requested process.
+exec "$@"
