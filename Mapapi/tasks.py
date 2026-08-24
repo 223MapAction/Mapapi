@@ -440,12 +440,12 @@ def send_push_notification_task(user_id, title, body, data=None):
     try:
         user = User.objects.get(pk=user_id)
     except User.DoesNotExist:
-        logger.warning(f"Push notification ignorée : utilisateur {user_id} introuvable.")
+        logger.warning("Push notification ignorée : utilisateur introuvable")
         return
 
     token = user.fcm_token
     if not token:
-        logger.warning(f"Push notification ignorée : utilisateur {user_id} sans fcm_token.")
+        logger.warning("Push notification ignorée : aucun jeton FCM")
         return
 
     message = messaging.Message(
@@ -454,11 +454,11 @@ def send_push_notification_task(user_id, title, body, data=None):
         token=token,
     )
     try:
-        response = messaging.send(message)
-        logger.info(f"Push envoyé à l'utilisateur {user_id} (message_id={response}).")
+        messaging.send(message)
+        logger.info("Push envoyé avec succès")
     except (messaging.UnregisteredError, messaging.SenderIdMismatchError):
-        logger.warning(f"Token FCM invalide/expiré pour l'utilisateur {user_id}, suppression.")
+        logger.warning("Jeton FCM invalide ou expiré ; suppression")
         user.fcm_token = None
         user.save(update_fields=['fcm_token'])
-    except FirebaseError as e:
-        logger.error(f"Erreur FCM lors de l'envoi à l'utilisateur {user_id} : {str(e)}")
+    except FirebaseError:
+        logger.exception("Erreur du fournisseur FCM pendant l'envoi push")

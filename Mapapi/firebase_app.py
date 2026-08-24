@@ -56,8 +56,8 @@ def init_firebase():
 
     try:
         cred = _load_credentials()
-    except Exception as exc:  # JSON/base64 malformé, fichier illisible, etc. : ne jamais empêcher le démarrage
-        logger.error("Identifiants FCM invalides, notifications push désactivées : %s", exc)
+    except Exception:  # JSON/base64 malformé, fichier illisible, etc. : ne jamais empêcher le démarrage
+        logger.exception("Identifiants FCM invalides, notifications push désactivées")
         return
 
     if cred is None:

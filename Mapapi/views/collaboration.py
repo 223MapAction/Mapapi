@@ -1,4 +1,6 @@
 """Collaboration endpoints (request, accept, decline, handle, dashboard)."""
+import logging
+
 from django.db.models import Q, Count
 from django.utils import timezone
 
@@ -23,6 +25,9 @@ from ..permissions import IsOrgAdmin, IsOrgOperative
 from ..roles import is_super_admin, is_org_admin, is_bureau_agent
 from ..Send_mails import send_email
 from .common import CustomPageNumberPagination, deaccent
+
+
+logger = logging.getLogger(__name__)
 
 
 def collaboration_scope_q(user, scope):
@@ -700,6 +705,7 @@ class DeclineCollaborationView(APIView):
         except Collaboration.DoesNotExist:
             return Response({"error": "Collaboration non trouvée"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
+            logger.exception("Échec inattendu lors du refus d'une collaboration")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

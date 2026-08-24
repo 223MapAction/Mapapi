@@ -116,6 +116,9 @@ This project was built under the [GNU Affero General Public License](LICENSE).
 
 For more detailed information, please refer to the [Developer Documentation](https://223mapaction.github.io/Mapapi/).
 
+Production logging, Sentry activation, privacy controls, cost defaults, and
+smoke-test instructions are documented in [API observability](docs/observability.md).
+
 ## DPG Assessment
 
 For a detailed assessment of the project's compliance with the Digital Public Goods Standard, please see the [DIGITAL PUBLIC GOODS STANDARD ASSESSMENT](DPG_ASSESSMENT.md). This document outlines our alignment with sustainable development goals, open licensing, and more.

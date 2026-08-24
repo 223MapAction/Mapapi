@@ -493,12 +493,7 @@ class IncidentAPIListView(generics.CreateAPIView):
         
         serializer.save()
 
-        image_name = serializer.data.get("photo")
-        print("Image Name:", image_name)
-
-        longitude = serializer.data.get("longitude")
-        latitude = serializer.data.get("lattitude")
-        print("Longitude:", longitude)
+        logger.debug("Média et coordonnées validés pour la création d'un incident")
 
         # Points system from dev version
         if "user_id" in request.data:
@@ -507,18 +502,18 @@ class IncidentAPIListView(generics.CreateAPIView):
                 user.points += 1
                 user.save()
             except User.DoesNotExist:
-                print(f"Warning: No user found with ID {request.data['user_id']}")
+                logger.warning("Attribution de points ignorée : utilisateur introuvable")
             except ValueError:
-                print(f"Warning: Invalid user ID format: {request.data['user_id']}")
+                logger.warning("Attribution de points ignorée : identifiant utilisateur invalide")
 
         # Video conversion
         if "video" in request.data and request.data["video"]:
             try:
                 subprocess.check_call(['python', f"{settings.BASE_DIR}" + '/convertvideo.py'])
-            except subprocess.CalledProcessError as e:
-                print(f"Warning: Video conversion failed: {e}")
-            except Exception as e:
-                print(f"Warning: Unexpected error during video conversion: {e}")
+            except subprocess.CalledProcessError:
+                logger.exception("La conversion vidéo de l'incident a échoué")
+            except Exception:
+                logger.exception("Erreur inattendue pendant la conversion vidéo de l'incident")
 
         # --- Trigger AI model-deploy analysis (async via Celery) ---
         # We create a pending Prediction immediately so the front-end can poll
@@ -532,8 +527,8 @@ class IncidentAPIListView(generics.CreateAPIView):
             if incident_obj.photo:
                 try:
                     analyze_incident_with_model_task.delay(prediction.id)
-                except Exception as e:  # broker unavailable, etc.
-                    print(f"Warning: could not enqueue analyze task: {e}")
+                except Exception:  # broker unavailable, etc.
+                    logger.exception("Impossible de mettre l'analyse d'incident en file d'attente")
             else:
                 # No photo => mark prediction as failed right away.
                 prediction.status = PredictionStatus.FAILED
@@ -3278,6 +3273,7 @@ class IncidentChatView(APIView):
                 context=prediction.full_response,
             )
         except Exception as exc:  # noqa: BLE001
+            logger.exception("Le service de chat IA a échoué")
             return Response(
                 {"detail": f"Chat service error: {exc}"},
                 status=status.HTTP_502_BAD_GATEWAY,

@@ -1,4 +1,6 @@
 """Zone endpoints."""
+import logging
+
 from rest_framework import status, generics
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
@@ -8,6 +10,9 @@ from drf_spectacular.types import OpenApiTypes
 
 from ..serializer import *
 from .common import CustomPageNumberPagination
+
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema_view(
@@ -130,6 +135,7 @@ class ZoneAPIListView(generics.ListCreateAPIView):
         try:
             return self.list(request, *args, **kwargs)
         except Exception as e:
+            logger.exception("Échec inattendu lors du chargement des zones")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def post(self, request, format=None, *args, **kwargs):
@@ -138,4 +144,3 @@ class ZoneAPIListView(generics.ListCreateAPIView):
             serializer.save()
             return Response(serializer.data, status=201)
         return Response(serializer.errors, status=400)
-

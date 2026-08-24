@@ -760,7 +760,7 @@ def send_sms(phone_number, otp_code, custom_message=None):
         sender_name = getattr(settings, 'ORANGE_SENDER_NAME', None) or 'MapAction'
 
         if not client_id or not client_secret or not sender_address:
-            print("Erreur: Configurations Orange Mali (ORANGE_CLIENT_ID, ORANGE_CLIENT_SECRET, ORANGE_SENDER_ADDRESS) manquantes.")
+            logger.error("Configuration Orange Mali incomplète ; envoi SMS désactivé")
             return False
 
         # 1. Obtenir le token OAuth
@@ -779,7 +779,7 @@ def send_sms(phone_number, otp_code, custom_message=None):
         access_token = token_data.get("access_token")
 
         if not access_token:
-            print("Erreur: Impossible d'obtenir le token d'accès Orange.")
+            logger.error("Le fournisseur Orange Mali n'a pas renvoyé de jeton d'accès")
             return False
 
         # Normaliser le numéro destinataire : format requis = tel:+223xxxxxxxx
@@ -827,7 +827,7 @@ def send_sms(phone_number, otp_code, custom_message=None):
             if len(stripped_sender_name) <= 11 and all(c.isalnum() or c.isspace() for c in stripped_sender_name):
                 outbound_request["senderName"] = stripped_sender_name
             else:
-                print(f"Warning: Le senderName '{sender_name}' a été omis car il ne respecte pas les critères d'Orange (max 11 caractères, caractères alphanumériques et espaces autorisés).")
+                logger.warning("Nom d'expéditeur Orange Mali invalide ; champ omis")
 
         payload = {
             "outboundSMSMessageRequest": outbound_request
@@ -835,16 +835,16 @@ def send_sms(phone_number, otp_code, custom_message=None):
 
         sms_response = requests.post(sms_url, json=payload, headers=headers_sms, timeout=10)
         if sms_response.status_code >= 400:
-            print(f"Détail de l'erreur Orange Mali ({sms_response.status_code}): {sms_response.text}")
+            logger.warning("Le fournisseur Orange Mali a renvoyé HTTP %s", sms_response.status_code)
         sms_response.raise_for_status()
         
-        print(f"SMS OTP envoyé via Orange Mali à {recipient}.")
+        logger.info("SMS envoyé via Orange Mali")
         return True
 
-    except Exception as e:
-        print(f"Erreur lors de l'envoi SMS Orange Mali: {str(e)}")
-        if hasattr(e, 'response') and e.response is not None:
-            print(f"Corps de la réponse d'erreur: {e.response.text}")
+    except Exception:
+        # Do not log the provider response body: it can echo phone numbers,
+        # credentials, and the one-time code.
+        logger.exception("Échec de l'envoi SMS via Orange Mali")
         return False
     
 
@@ -1086,4 +1086,3 @@ class UpdateFCMTokenView(APIView):
 
     def put(self, request, *args, **kwargs):
         return self._update(request)
-

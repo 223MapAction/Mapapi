@@ -1,4 +1,6 @@
 """Elu endpoints."""
+import logging
+
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
@@ -21,6 +23,9 @@ from rest_framework import serializers
 from ..serializer import *
 from ..Send_mails import send_email
 from .common import CustomPageNumberPagination
+
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema_view(
@@ -125,6 +130,7 @@ class EluToZoneAPIListView(generics.ListCreateAPIView):
         try:
             return super().list(request, *args, **kwargs)
         except Exception as e:
+            logger.exception("Échec inattendu lors du chargement des élus")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -140,5 +146,5 @@ class EluToZoneAPIListView(generics.ListCreateAPIView):
                 })
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            logger.exception("Échec inattendu lors de l'attribution d'un élu à une zone")
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-

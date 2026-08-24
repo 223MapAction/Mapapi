@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+!.env.example
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+uploads/
+celerybeat-schedule
+db_reset_backup_*.json
+.DS_Store
+.idea/
+.claude/
