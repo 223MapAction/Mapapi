@@ -33,6 +33,12 @@ services:
         env_file:
             - .env
         environment:
+            # api-server bind-mounts the runner workspace (.:/app) and runs as root.
+            # Without this, `runserver` writes root-owned .pyc into the workspace;
+            # the next deploy's actions/checkout then fails to clean them (EACCES),
+            # half-deletes the tree, and the container 500s ("No module named
+            # Mapapi.urls"). Not writing bytecode at all removes the root cause.
+            - PYTHONDONTWRITEBYTECODE=1
             - ALLOWED_HOSTS=${ALLOWED_HOSTS}
             - ANDROID_CLIENT_ID=${ANDROID_CLIENT_ID}
             - DB_HOST=${DB_HOST}
