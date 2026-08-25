@@ -28,3 +28,4 @@ from .misc import *  # noqa: F401,F403
 from .task import *  # noqa: F401,F403
 from .partner_suggestion import *  # noqa: F401,F403
 from .auth_cookie import *  # noqa: F401,F403
+from .health import *  # noqa: F401,F403

@@ -59,6 +59,9 @@ from .views.auth_cookie import (
 )
 
 urlpatterns = [
+    # Deep health-check for external uptime monitoring (public). Probes DB, Redis,
+    # Celery workers, the Model_deploy TLS cert, and recent-prediction failure rate.
+    path('health/', HealthCheckView.as_view(), name='health-check'),
     path('tenant-config/', TenantConfigView.as_view(), name='tenant_config'),
     path('organisations/', OrganisationViewSet.as_view(), name='organisation-list-create'),
     path('organisations/stats/', OrganisationStatsView.as_view(), name='organisation-stats'),
