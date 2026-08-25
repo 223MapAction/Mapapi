@@ -85,7 +85,7 @@ jobs:
             echo "SENTRY_ENVIRONMENT=production"
             echo "SENTRY_RELEASE=${{ github.sha }}"
             echo "SENTRY_SERVER_NAME=map-action-api"
-            echo "SENTRY_TRACES_SAMPLE_RATE=0.0"
+            echo "SENTRY_TRACES_SAMPLE_RATE=0.1"
             echo "SENTRY_ENABLE_LOGS=False"
           } > .env
 
