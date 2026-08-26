@@ -23,10 +23,18 @@ Response contract (public, no auth, so the monitor can poll it):
       unreachable — the API cannot function.
 
 Point the monitor at `/MapApi/health/` with a keyword assertion — alert unless
-the body contains `"status": "ok"` — to be paged on `degraded` too (cert
-expiry, dead workers), while the raw 503 still trips even a status-code-only
-monitor on a hard outage. Never raises: any probe error is reported as that
-check failing, never a 500.
+the body contains `{"status":"ok","checks"` — to be paged on `degraded` too
+(cert expiry, dead workers), while the raw 503 still trips even a
+status-code-only monitor on a hard outage.
+
+The keyword must be that exact anchored form: the response is COMPACT json (no
+space after the colon) and `,"checks"` pins the match to the TOP-LEVEL status,
+so a healthy nested check (`{"database":{"status":"ok"}}`) cannot mask a
+`degraded` overall. This view also pins `renderer_classes = [JSONRenderer]` so a
+monitor's browser-like `Accept` header can never get the browsable-API HTML
+instead (that page HTML-escapes the JSON and broke the assertion in testing).
+
+Never raises: any probe error is reported as that check failing, never a 500.
 """
 import os
 import socket
@@ -36,6 +44,7 @@ from urllib.parse import urlparse
 
 from django.conf import settings
 from django.db import connection
+from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -160,6 +169,13 @@ class HealthCheckView(APIView):
 
     permission_classes = ()
     authentication_classes = ()
+    # ALWAYS answer JSON. Uptime monitors send a browser-like `Accept:
+    # text/html,...`, and DRF content negotiation would then render the
+    # *browsable API HTML page* instead — where the JSON is pretty-printed and
+    # HTML-escaped (`&quot;status&quot;: &quot;ok&quot;`). A keyword assertion then
+    # matches a NESTED check and the monitor stays green through a real
+    # degradation (observed 2026-08-25 during a live celery-down test).
+    renderer_classes = [JSONRenderer]
 
     # Critical checks fail the whole endpoint (503); the rest only mark it degraded.
     _CRITICAL = ("database", "redis")
