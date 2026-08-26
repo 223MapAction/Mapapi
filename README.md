@@ -9,6 +9,7 @@
     <em>Comprehensive solution for managing and visualizing environment-related incidents.</em>
 </p>
 <p align="center">
+	<a href="https://uptime.betterstack.com/?utm_source=status_badge"><img src="https://uptime.betterstack.com/status-badges/v3/monitor/2w4i0.svg" alt="Better Stack uptime"></a>
 	<img src="https://img.shields.io/github/license/223MapAction/Model_deploy?style=flat-square&amp;logo=opensourceinitiative&amp;logoColor=white&amp;color=0080ff" alt="License">
 	<img src="https://img.shields.io/github/last-commit/223MapAction/Mapapi?style=flat-square&amp;logo=git&amp;logoColor=white&amp;color=0080ff" alt="Last Commit">
 	<img src="https://img.shields.io/github/languages/top/223MapAction/Mapapi?style=flat-square&amp;color=0080ff" alt="Top Language">
