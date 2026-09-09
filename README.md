@@ -3,7 +3,7 @@
   <img src="https://dashboard.map-action.com/static/media/logo.ff03b7a9.png" width="100" alt="">
 </p>
 <p align="center">
-    <h1 align="center">Mapapi</h1>
+    <h1 align="center">Map Action Api</h1>
 </p>
 <p align="center">
     <em>Comprehensive solution for managing and visualizing environment-related incidents.</em>
@@ -73,7 +73,7 @@ Mapapi (Map Action API) is a comprehensive solution that combines a robust API. 
 #### Clone the repository
 
 ```bash
-git clone https://github.com/223MapAction/Mapapi.git
+git clone https://github.com/223MapAction/map-action-api.git
 cd Mapapi
 ```
 
